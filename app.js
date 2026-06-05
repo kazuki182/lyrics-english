@@ -329,7 +329,7 @@ function renderArtistInfo(info) {
 
 function lineHtml(line, songId, songTitle, artistName) {
   const g = normalizeGrammarObject(line.grammar, line.lyric);
-  const translation = line.translation || g.translation || translateLine(line.lyric);
+  const translation = cleanTranslation(line.translation, line.lyric) || cleanTranslation(g.translation, line.lyric) || translateLine(line.lyric);
   const notes = (g.notes && g.notes.length ? g.notes : grammarNotes(line.lyric, g.points || [])).slice(0, 4);
   const words = (g.words && g.words.length ? g.words : vocabularyItems(line.lyric)).slice(0, 6);
   const examples = (g.examples && g.examples.length ? g.examples : similarExamples(line.lyric)).slice(0, 2);
@@ -667,6 +667,32 @@ function makeLine(line, no) {
   };
 }
 
+function isPlaceholderTranslation(value) {
+  const text = String(value || "").trim();
+  if (!text) return true;
+  return /自然な日本語に訳してください|前後の文脈|和訳を作成できませんでした|和訳を自動作成できませんでした/.test(text);
+}
+
+function cleanTranslation(value, lyric) {
+  if (isPlaceholderTranslation(value)) return "";
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (text === String(lyric || "").trim()) return "";
+  return text;
+}
+
+function refreshLineAnalysis(line, index = 0) {
+  const lyric = String(line?.lyric || line || "").trim();
+  return {
+    line_no: Number(line?.line_no) || index + 1,
+    lyric,
+    translation: translateLine(lyric),
+    grammar: grammarObject(lyric),
+    vocabulary: vocabularyText(lyric),
+    preposition: prepositionText(lyric)
+  };
+}
+
 function grammarObject(line) {
   const normalized = normalizeLyricLine(line);
   const lower = normalized.toLowerCase();
@@ -893,9 +919,13 @@ async function saveSong() {
   }
 
   const existing = songs.find(s => s.id === id);
-  const lines = currentAnalysis.length
+  const sourceLines = currentAnalysis.length
     ? currentAnalysis
     : raw.split(/\n+/).map((line, i) => makeLine(line.trim(), i + 1)).filter(l => l.lyric);
+
+  // 古い保存データに「自然な日本語に訳してください」などの仮文が残っていても、
+  // 保存時に必ず現在のロジックで再分析してからSupabaseへ入れる。
+  const lines = sourceLines.map((line, i) => refreshLineAnalysis(line, i)).filter(l => l.lyric);
 
   // まず画面上の入力をバックアップする。Supabase保存で失敗しても歌詞が消えないようにする。
   const draftBackup = {
@@ -1063,7 +1093,7 @@ function editSong(id) {
   qs("#difficulty").value = s.difficulty || "初級";
   qs("#artistProfile").value = s.artist_profile || "";
   qs("#lyricsRaw").value = s.lyrics_raw || "";
-  currentAnalysis = Array.isArray(s.lyric_lines) ? s.lyric_lines : [];
+  currentAnalysis = Array.isArray(s.lyric_lines) ? s.lyric_lines.map((line, i) => refreshLineAnalysis(line, i)) : [];
   qs("#lyricsLinksPreview").style.display = "none";
   qs("#lyricsLinksBox").innerHTML = "";
   qs("#analysisPreview").innerHTML = currentAnalysis.map(l => lineHtml(l, s.id, s.title, s.artist_name)).join("");
