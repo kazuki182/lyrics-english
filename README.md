@@ -26,11 +26,14 @@
 
 `config.js` の `window.YOUTUBE_API_KEY` にAPIキーを設定すると、YouTube動画タイトルとチャンネル名から曲名・アーティスト名を推定します。
 
-APIキーが空でも、以下の主要曲は手動マッピングで動作します。
+APIキーが空の場合は、まずYouTube oEmbedでタイトルとチャンネル名の取得を試します。取得できない場合でも、以下の主要曲は手動マッピングで動作します。
 
 - `https://www.youtube.com/watch?v=JGwWNGJdvx8`
   - Shape of You
   - Ed Sheeran
+- `https://youtu.be/kXYiU_JCYtU`
+  - Numb
+  - Linkin Park
 
 ### Wikimedia REST API
 
