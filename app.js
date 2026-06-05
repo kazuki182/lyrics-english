@@ -1,4 +1,4 @@
-let supabaseClient;
+var supabaseClient;
 let currentUser = null;
 let songs = [];
 let vocab = [];
