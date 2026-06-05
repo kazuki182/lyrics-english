@@ -6,6 +6,7 @@ let logs = [];
 let currentAnalysis = [];
 let selectedWordContext = null;
 let realtimeStarted = false;
+const APP_PATCH_VERSION = "v10-artist-profile-japanese";
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka"];
 const COMMON_PASSWORD = "12345";
@@ -67,6 +68,8 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
+  window.LYRICS_ENGLISH_VERSION = "v11-force-reanalysis";
+  console.log("Lyrics English v11-force-reanalysis loaded");
   bindStaticEvents();
   const savedUser = localStorage.getItem("currentUser");
   if (savedUser) enterApp(savedUser);
@@ -328,11 +331,13 @@ function renderArtistInfo(info) {
 }
 
 function lineHtml(line, songId, songTitle, artistName) {
-  const g = normalizeGrammarObject(line.grammar, line.lyric);
-  const translation = cleanTranslation(line.translation, line.lyric) || cleanTranslation(g.translation, line.lyric) || translateLine(line.lyric);
-  const notes = (g.notes && g.notes.length ? g.notes : grammarNotes(line.lyric, g.points || [])).slice(0, 4);
-  const words = (g.words && g.words.length ? g.words : vocabularyItems(line.lyric)).slice(0, 6);
-  const examples = (g.examples && g.examples.length ? g.examples : similarExamples(line.lyric)).slice(0, 2);
+  // v11: Supabaseに残っている古い分析結果は画面表示に使わず、必ず歌詞本文から再解析する。
+  const lyric = String(line?.lyric || "").trim();
+  const g = grammarObject(lyric);
+  const translation = translateLine(lyric);
+  const notes = grammarNotes(lyric, g.points || []).slice(0, 4);
+  const words = vocabularyItems(lyric).slice(0, 6);
+  const examples = similarExamples(lyric).slice(0, 2);
   return `<div class="lyrics-line">
     <div class="en">${wordify(line.lyric, songId, line.line_no, songTitle, artistName)}</div>
     <div class="jp"><b>自然な和訳：</b>${esc(translation)}</div>
@@ -400,8 +405,7 @@ async function autoFillFromYoutube() {
   if (youtubeThumbFromEmbed && !qs("#coverArtUrl").value) qs("#coverArtUrl").value = youtubeThumbFromEmbed;
   createLyricsLinksFromForm(false);
   const artistInfo = await fetchArtistInfo(guess.artist);
-  if (artistInfo?.extract) qs("#artistProfile").value = artistInfo.extract;
-  else if (guess.profile) qs("#artistProfile").value = guess.profile;
+  qs("#artistProfile").value = getJapaneseArtistProfile(guess.artist, artistInfo?.extract || guess.profile || "");
   toast("曲名・アーティスト名を自動入力しました");
 }
 
@@ -471,7 +475,7 @@ function applySongGuess(g) {
   qs("#songTitle").value = g.title || "";
   qs("#artistName").value = g.artist || "";
   qs("#genre").value = g.genre || "Pop";
-  qs("#artistProfile").value = g.profile || makeArtistProfile(g.artist || "このアーティスト");
+  qs("#artistProfile").value = getJapaneseArtistProfile(g.artist || "このアーティスト", g.profile || "");
 }
 
 function makeArtistProfile(artist) {
@@ -501,11 +505,22 @@ function looksEnglishProfile(text) {
   return /\b(is|are|was|were|born|formed|singer|rapper|band|songwriter|producer|American|British|rock|pop)\b/i.test(value);
 }
 
+function getJapaneseArtistProfile(artistName, rawProfile = "") {
+  const artist = (artistName || "このアーティスト").trim();
+  const profile = String(rawProfile || "").trim();
+
+  // 日本語プロフィールが既に入っている場合だけ、そのまま使います。
+  if (profile && hasJapaneseText(profile) && !looksEnglishProfile(profile)) {
+    return profile;
+  }
+
+  // 英語Wikipediaの本文や英語テキストは画面に出さず、
+  // アプリ内の日本語紹介文に必ず置き換えます。
+  return makeArtistProfile(artist);
+}
+
 function getDisplayArtistProfile(song) {
-  const profile = (song?.artist_profile || "").trim();
-  if (!profile) return makeArtistProfile(song?.artist_name || "このアーティスト");
-  if (looksEnglishProfile(profile)) return makeArtistProfile(song?.artist_name || "このアーティスト");
-  return profile;
+  return getJapaneseArtistProfile(song?.artist_name || "このアーティスト", song?.artist_profile || "");
 }
 
 async function fetchArtistInfo(artistName) {
@@ -520,7 +535,7 @@ async function fetchArtistInfo(artistName) {
       const isJapanese = lang === "ja" || hasJapaneseText(json.extract || "");
       return {
         name: json.title || name,
-        extract: isJapanese ? json.extract : makeArtistProfile(name),
+        extract: isJapanese ? json.extract : getJapaneseArtistProfile(name, json.extract),
         image: json.thumbnail?.source || json.originalimage?.source || "",
         url: json.content_urls?.desktop?.page || json.content_urls?.mobile?.page || ""
       };
@@ -760,14 +775,19 @@ function grammarHtml(g) {
 }
 
 function normalizeLyricLine(line) {
+  // v11: 歌詞サイトやコピペで「I ’ m」のように分かれたアポストロフィーも正規化する。
   return String(line || "")
     .replace(/[’‘´`]/g, "'")
     .replace(/[“”]/g, '"')
     .replace(/\s*'\s*/g, "'")
-    .replace(/I\s*m/gi, "I'm")
-    .replace(/You\s*re/gi, "you're")
-    .replace(/We\s*re/gi, "we're")
-    .replace(/They\s*re/gi, "they're")
+    .replace(/\bI\s*m\b/gi, "I'm")
+    .replace(/\bI\s+am\b/gi, "I am")
+    .replace(/\bYou\s*re\b/gi, "you're")
+    .replace(/\bWe\s*re\b/gi, "we're")
+    .replace(/\bThey\s*re\b/gi, "they're")
+    .replace(/\bHe\s*s\b/gi, "he's")
+    .replace(/\bShe\s*s\b/gi, "she's")
+    .replace(/\bIt\s*s\b/gi, "it's")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -784,7 +804,7 @@ function translateLine(line) {
   };
   if (exact[normalized]) return exact[normalized];
 
-  if (/^i[' ]?m tired of being what you want me to be$/i.test(normalized)) {
+  if (/^i[' ]?m tired of being what you want me to be$/i.test(normalized) || /tired of being what you want me to be/i.test(normalized)) {
     return "あなたが望むような自分でいることに、もう疲れた。";
   }
   if (/^i[' ]?m tired of waiting\.?$/i.test(normalized)) return "待つことに疲れた。";
@@ -938,7 +958,7 @@ async function saveSong() {
     cover_art_url: qs("#coverArtUrl").value.trim(),
     genre: qs("#genre").value.trim(),
     difficulty: qs("#difficulty").value,
-    artist_profile: qs("#artistProfile").value.trim(),
+    artist_profile: getJapaneseArtistProfile(artistName, qs("#artistProfile").value.trim()),
     lyrics_raw: raw,
     lyric_lines: lines,
     updated_at: new Date().toISOString()
@@ -1091,7 +1111,7 @@ function editSong(id) {
   createLyricsLinksFromForm(false);
   qs("#genre").value = s.genre || "";
   qs("#difficulty").value = s.difficulty || "初級";
-  qs("#artistProfile").value = s.artist_profile || "";
+  qs("#artistProfile").value = getJapaneseArtistProfile(s.artist_name || "このアーティスト", s.artist_profile || "");
   qs("#lyricsRaw").value = s.lyrics_raw || "";
   currentAnalysis = Array.isArray(s.lyric_lines) ? s.lyric_lines.map((line, i) => refreshLineAnalysis(line, i)) : [];
   qs("#lyricsLinksPreview").style.display = "none";
