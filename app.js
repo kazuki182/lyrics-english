@@ -1,4 +1,11 @@
-var supabaseClient;
+(function () {
+  if (window.__LYRICS_ENGLISH_APP_LOADED__) {
+    console.warn("Lyrics English app.js was loaded more than once. Skipping duplicate execution.");
+    return;
+  }
+  window.__LYRICS_ENGLISH_APP_LOADED__ = true;
+
+let supabaseClient;
 let currentUser = null;
 let songs = [];
 let vocab = [];
@@ -6,7 +13,7 @@ let logs = [];
 let currentAnalysis = [];
 let selectedWordContext = null;
 let realtimeStarted = false;
-const APP_PATCH_VERSION = "v10-artist-profile-japanese";
+const APP_PATCH_VERSION = "v12-double-load-ai-ui-fix";
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka"];
 const COMMON_PASSWORD = "12345";
@@ -68,9 +75,10 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v11-force-reanalysis";
-  console.log("Lyrics English v11-force-reanalysis loaded");
+  window.LYRICS_ENGLISH_VERSION = "v12-double-load-ai-ui-fix";
+  console.log("Lyrics English v12-double-load-ai-ui-fix loaded");
   bindStaticEvents();
+  document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
   if (savedUser) enterApp(savedUser);
 });
@@ -1302,3 +1310,5 @@ function esc(s) { return String(s ?? "").replace(/[&<>"']/g, m => ({ "&": "&amp;
 function nl(s) { return esc(s).replace(/\n/g, "<br>"); }
 function escAttr(s) { return esc(s).replace(/\n/g, " "); }
 function fmt(s) { return s ? new Date(s).toLocaleString() : ""; }
+
+})();
