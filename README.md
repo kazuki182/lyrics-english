@@ -1,9 +1,13 @@
-# Lyrics English
+# Lyrics English Ver3 Fixed
 
-
-## Ver2追加
-- YouTube URLから曲名・アーティスト名を自動推定
-- YouTube Data API Key対応
+## 修正内容
+- ログインボタンが押せない不具合を修正
+- `login is not a function` エラーを解消
+- YouTube URLから曲名・アーティスト推定
+- Shape of You はAPIキーなしで自動入力
 - 文法解説を詳細化
-- 前置詞解説を詳細化
-- 単語候補抽出を強化
+- Supabase接続設定済み
+
+## ログイン
+- kazuki / 12345
+- shun / 12345
