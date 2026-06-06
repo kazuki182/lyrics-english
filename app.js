@@ -17,7 +17,7 @@ let currentUtterance = null;
 let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
-const APP_PATCH_VERSION = "v21-loginfix-analysis-refresh";
+const APP_PATCH_VERSION = "v22-manual-analysis-reflect";
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
 const COMMON_PASSWORD = "12345";
@@ -79,8 +79,8 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v21-loginfix-analysis-refresh";
-  console.log("Lyrics English v21-loginfix-analysis-refresh loaded");
+  window.LYRICS_ENGLISH_VERSION = "v22-manual-analysis-reflect";
+  console.log("Lyrics English v22-manual-analysis-reflect loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
@@ -1079,6 +1079,16 @@ async function analyzeLyrics() {
 
   qs("#lyricsLinksPreview").style.display = "none";
   qs("#lyricsLinksBox").innerHTML = "";
+
+  const manualText = qs("#manualAnalysis")?.value?.trim() || "";
+  const manualLines = parseManualAnalysis(manualText);
+  if (manualLines.length) {
+    currentAnalysis = manualLines;
+    qs("#analysisPreview").innerHTML = currentAnalysis.map(l => lineHtml(l, "preview", "", "")).join("");
+    toast("ChatGPT解析結果を分析レビューに反映しました");
+    return;
+  }
+
   qs("#analysisPreview").innerHTML = "<p class='mini'>AI解析中です。歌詞を1行ずつ解析しています...</p>";
   const title = qs("#songTitle")?.value?.trim() || "";
   const artist = qs("#artistName")?.value?.trim() || "";
@@ -1107,6 +1117,105 @@ async function analyzeLyricsWithAI(raw, title = "", artist = "") {
   const lines = Array.isArray(json.lines) ? json.lines : [];
   if (!lines.length) throw new Error("AI解析結果が空でした");
   return lines.map((line, index) => normalizeAIAnalysisLine(line, index)).filter(l => l.lyric);
+}
+
+function parseManualAnalysis(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return [];
+
+  const blocks = raw
+    .replace(/\r\n/g, "\n")
+    .split(/(?=【英文】)/g)
+    .map(b => b.trim())
+    .filter(Boolean);
+
+  const lines = [];
+  blocks.forEach((block, index) => {
+    const lyric = extractManualSection(block, "英文").split(/\n/).map(x => x.trim()).filter(Boolean)[0] || "";
+    if (!lyric) return;
+    const translation = extractManualSection(block, "自然な和訳").split(/\n/).map(x => x.trim()).filter(Boolean)[0] || "";
+    const grammarText = extractManualSection(block, "文法ポイント");
+    const wordsText = extractManualSection(block, "単語の意味");
+    const examplesText = extractManualSection(block, "例文");
+
+    const notes = parseBulletLines(grammarText).map(item => item.replace(/^・\s*/, "").trim()).filter(Boolean);
+    const wordItems = parseManualWords(wordsText);
+    const examples = parseBulletLines(examplesText).map(item => item.replace(/^・\s*/, "").trim()).filter(Boolean);
+
+    lines.push({
+      line_no: index + 1,
+      lyric,
+      translation: cleanTranslation(translation, lyric) || translateLine(lyric),
+      grammar: {
+        translation: cleanTranslation(translation, lyric) || translateLine(lyric),
+        points: notes.map(note => note.split(/[：:]/)[0].trim()).filter(Boolean),
+        notes: notes.length ? notes : grammarNotesFromManualWords(wordItems, lyric),
+        words: wordItems.length ? wordItems : vocabularyItems(lyric).slice(0, 6),
+        examples: examples.length ? examples : similarExamples(lyric)
+      },
+      vocabulary: wordItems.map(w => `・${w.word}: ${w.meaning}`).join("\n"),
+      preposition: "ChatGPT手動解析"
+    });
+  });
+
+  return lines;
+}
+
+function extractManualSection(block, label) {
+  const labels = ["英文", "自然な和訳", "文法ポイント", "単語の意味", "例文"];
+  const marker = `【${label}】`;
+  const start = block.indexOf(marker);
+  if (start < 0) return "";
+  const bodyStart = start + marker.length;
+  let end = block.length;
+  labels.forEach(other => {
+    if (other === label) return;
+    const pos = block.indexOf(`【${other}】`, bodyStart);
+    if (pos >= 0 && pos < end) end = pos;
+  });
+  return block.slice(bodyStart, end).trim();
+}
+
+function parseBulletLines(text) {
+  return String(text || "")
+    .split(/\n+/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .filter(line => !/^使い方[:：]|^例文[:：]|^訳[:：]/.test(line));
+}
+
+function parseManualWords(text) {
+  const rows = String(text || "").split(/\n+/).map(line => line.trim()).filter(Boolean);
+  const words = [];
+  let current = null;
+  rows.forEach(row => {
+    const main = row.match(/^・?\s*([^：:]+)[：:]\s*(.+)$/);
+    if (main && !/^(使い方|例文|訳)$/.test(main[1].trim())) {
+      current = {
+        word: normalizeWord(main[1].trim()),
+        meaning: main[2].trim(),
+        usage: "",
+        example: "",
+        example_ja: ""
+      };
+      if (current.word) words.push(current);
+      return;
+    }
+    if (!current) return;
+    const usage = row.match(/^使い方[：:]\s*(.+)$/);
+    if (usage) { current.usage = usage[1].trim(); return; }
+    const example = row.match(/^例文[：:]\s*(.+)$/);
+    if (example) { current.example = example[1].trim(); return; }
+    const ja = row.match(/^訳[：:]\s*(.+)$/);
+    if (ja) { current.example_ja = ja[1].trim(); }
+  });
+  return words.filter(w => w.word);
+}
+
+function grammarNotesFromManualWords(words, lyric) {
+  const base = grammarObject(lyric).notes || [];
+  if (base.length) return base;
+  return words.slice(0, 3).map(w => `${w.word}: ${w.usage || w.meaning}`);
 }
 
 function normalizeAIAnalysisLine(line, index = 0) {
@@ -1427,9 +1536,17 @@ async function saveSong() {
   }
 
   const existing = songs.find(s => s.id === id);
-  const sourceLines = currentAnalysis.length
-    ? currentAnalysis
-    : raw.split(/\n+/).map((line, i) => makeLine(line.trim(), i + 1)).filter(l => l.lyric);
+  const manualText = qs("#manualAnalysis")?.value?.trim() || "";
+  const manualLines = parseManualAnalysis(manualText);
+  if (manualLines.length) {
+    currentAnalysis = manualLines;
+    qs("#analysisPreview").innerHTML = currentAnalysis.map(l => lineHtml(l, "preview", "", "")).join("");
+  }
+  const sourceLines = manualLines.length
+    ? manualLines
+    : currentAnalysis.length
+      ? currentAnalysis
+      : raw.split(/\n+/).map((line, i) => makeLine(line.trim(), i + 1)).filter(l => l.lyric);
 
   // AI解析済みデータがある場合はそれを保存する。未解析または古い仮文だけの場合は簡易解析で補完する。
   const lines = sourceLines.map((line, i) => {
@@ -1611,7 +1728,10 @@ function editSong(id) {
   qs("#manualAnalysis").value = s.manual_analysis || "";
   qs("#chatgptPrompt").value = buildChatGPTPrompt(s.title || "", s.artist_name || "", s.lyrics_raw || "");
   qs("#lyricsRaw").value = s.lyrics_raw || "";
-  currentAnalysis = Array.isArray(s.lyric_lines) ? s.lyric_lines.map((line, i) => normalizeAIAnalysisLine(line, i)) : [];
+  const manualLines = parseManualAnalysis(s.manual_analysis || "");
+  currentAnalysis = manualLines.length
+    ? manualLines
+    : Array.isArray(s.lyric_lines) ? s.lyric_lines.map((line, i) => normalizeAIAnalysisLine(line, i)) : [];
   qs("#lyricsLinksPreview").style.display = "none";
   qs("#lyricsLinksBox").innerHTML = "";
   qs("#analysisPreview").innerHTML = currentAnalysis.map(l => lineHtml(l, s.id, s.title, s.artist_name)).join("");
