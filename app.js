@@ -17,7 +17,7 @@ let currentUtterance = null;
 let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
-const APP_PATCH_VERSION = "v20-metadata-speech-update";
+const APP_PATCH_VERSION = "v21-analysis-refresh";
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
 const COMMON_PASSWORD = "12345";
@@ -80,7 +80,7 @@ const KNOWN_YOUTUBE = {
 
 document.addEventListener("DOMContentLoaded", () => {
   window.LYRICS_ENGLISH_VERSION = "v20-metadata-speech-update";
-  console.log("Lyrics English v20-metadata-speech-update loaded");
+  console.log("Lyrics English v21-analysis-refresh loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
@@ -130,6 +130,7 @@ function handleDelegatedClick(e) {
     if (name === "speech-stop") stopSpeech();
     if (name === "speech-rate") setSpeechRate(Number(action.dataset.rate) || 1, action.dataset.text || currentSpeechText);
     if (name === "refresh-metadata") refreshSongMetadata(id);
+    if (name === "refresh-analysis") refreshSongAnalysis(id);
     if (name === "delete-vocab") deleteVocab(id);
     return;
   }
@@ -340,6 +341,7 @@ function openSong(id) {
             ${s.apple_music_url ? `<a class="btn secondary" href="${escAttr(s.apple_music_url)}" target="_blank" rel="noopener">Apple Music</a>` : `<button class="btn secondary" disabled>Apple Music未登録</button>`}
             ${spotifyUrl ? `<a class="btn secondary" href="${escAttr(spotifyUrl)}" target="_blank" rel="noopener">Spotify</a>` : `<button class="btn secondary" disabled>Spotify未登録</button>`}
             <button class="btn secondary" data-action="refresh-metadata" data-id="${escAttr(s.id)}" type="button">曲情報を更新</button>
+            <button class="btn green" data-action="refresh-analysis" data-id="${escAttr(s.id)}" type="button">分析レビューを更新</button>
           </div>
           <div class="speech-panel">
             <div class="speech-title">読み上げ</div>
@@ -370,7 +372,7 @@ function openSong(id) {
       <h3 class="section-title">アーティスト情報</h3>
       <div id="artistInfo" class="mini">アーティスト情報を取得中...</div>
     </div>
-    <div class="card"><h3 class="section-title">歌詞解説</h3><p class="mini">まず通常の歌詞解説を表示します。単語に触れると意味・使い方・例文が出ます。クリックすると単語帳追加画面が開きます。</p>${lines.map(l => lineHtml(l, s.id, s.title, s.artist_name)).join("") || "<p class='mini'>歌詞がありません。</p>"}</div>
+    <div class="card"><h3 class="section-title">歌詞解説</h3><p class="mini">まず通常の歌詞解説を表示します。単語に触れると意味・使い方・例文が出ます。クリックすると単語帳追加画面が開きます。</p><div class="actions" style="margin:12px 0 16px"><button class="btn green" data-action="refresh-analysis" data-id="${escAttr(s.id)}" type="button">この曲の分析レビューを更新</button></div>${lines.map(l => lineHtml(l, s.id, s.title, s.artist_name)).join("") || "<p class='mini'>歌詞がありません。</p>"}</div>
     ${s.manual_analysis ? `<div class="card"><details class="manual-analysis-toggle"><summary>ChatGPT解析結果を開く</summary><p class="mini">ChatGPTで作成した解析結果です。必要なときだけ開いて確認できます。</p><div class="manual-analysis">${nl(s.manual_analysis)}</div></details></div>` : ""}`;
   showScreen("detail");
   enrichSongDetail(s, youtubeThumb, savedCover);
@@ -1614,6 +1616,51 @@ function editSong(id) {
   qs("#lyricsLinksBox").innerHTML = "";
   qs("#analysisPreview").innerHTML = currentAnalysis.map(l => lineHtml(l, s.id, s.title, s.artist_name)).join("");
   showScreen("add");
+}
+
+async function refreshSongAnalysis(id) {
+  const song = songs.find(x => x.id === id);
+  if (!song) return;
+
+  const originalRaw = song.lyrics_raw || (Array.isArray(song.lyric_lines) ? song.lyric_lines.map(l => l.lyric).filter(Boolean).join("
+") : "");
+  const raw = normalizeLyricsText(originalRaw || "");
+  if (!raw.trim()) {
+    toast("更新できる歌詞本文がありません。編集画面で歌詞を入力してください");
+    return;
+  }
+
+  toast("分析レビューを更新中です...");
+  let lines = [];
+  let usedAI = true;
+  try {
+    lines = await analyzeLyricsWithAI(raw, song.title || "", song.artist_name || "");
+  } catch (error) {
+    usedAI = false;
+    console.warn("AI analysis refresh failed. Fallback analysis will be saved.", error);
+    lines = splitLyricsLines(raw).map((line, i) => refreshLineAnalysis({ lyric: line, line_no: i + 1 }, i)).filter(l => l.lyric);
+  }
+
+  const payload = {
+    lyrics_raw: raw,
+    lyric_lines: lines,
+    updated_by: currentUser,
+    updated_at: new Date().toISOString()
+  };
+
+  const { error } = await supabaseClient.from("songs").update(payload).eq("id", id);
+  if (error) {
+    console.error("Analysis refresh save failed", error);
+    toast("分析レビュー更新の保存に失敗: " + error.message);
+    return;
+  }
+
+  await addLog(`${currentUser} が「${song.title}」の分析レビューを更新しました`);
+  await fetchSongs();
+  renderSongs();
+  const updated = songs.find(x => x.id === id);
+  if (updated) openSong(id);
+  toast(usedAI ? "分析レビューを更新しました" : "AI解析に失敗したため、簡易解析で分析レビューを更新しました");
 }
 
 async function refreshSongMetadata(id) {
