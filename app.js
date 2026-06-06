@@ -13,7 +13,11 @@ let logs = [];
 let currentAnalysis = [];
 let selectedWordContext = null;
 let realtimeStarted = false;
-const APP_PATCH_VERSION = "v17-home-latest-users";
+let currentUtterance = null;
+let currentSpeechText = "";
+let currentSpeechRate = 0.9;
+let speechPaused = false;
+const APP_PATCH_VERSION = "v19-speech-controls";
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
 const COMMON_PASSWORD = "12345";
@@ -75,8 +79,8 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v17-home-latest-users";
-  console.log("Lyrics English v17-home-latest-users loaded");
+  window.LYRICS_ENGLISH_VERSION = "v19-speech-controls";
+  console.log("Lyrics English v19-speech-controls loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
@@ -121,7 +125,10 @@ function handleDelegatedClick(e) {
     if (name === "open-song") openSong(id);
     if (name === "edit-song") editSong(id);
     if (name === "delete-song") deleteSong(id);
-    if (name === "speak") speakText(action.dataset.text || "");
+    if (name === "speak") speakText(action.dataset.text || "", Number(action.dataset.rate) || currentSpeechRate);
+    if (name === "speech-pause") pauseOrResumeSpeech();
+    if (name === "speech-stop") stopSpeech();
+    if (name === "speech-rate") setSpeechRate(Number(action.dataset.rate) || 0.9, action.dataset.text || currentSpeechText);
     if (name === "delete-vocab") deleteVocab(id);
     return;
   }
@@ -327,7 +334,10 @@ function openSong(id) {
             ${s.youtube_url ? `<a class="btn" href="${escAttr(s.youtube_url)}" target="_blank" rel="noopener">YouTube</a>` : `<button class="btn secondary" disabled>YouTube未登録</button>`}
             ${s.apple_music_url ? `<a class="btn secondary" href="${escAttr(s.apple_music_url)}" target="_blank" rel="noopener">Apple Music</a>` : `<button class="btn secondary" disabled>Apple Music未登録</button>`}
             ${spotifyUrl ? `<a class="btn secondary" href="${escAttr(spotifyUrl)}" target="_blank" rel="noopener">Spotify</a>` : `<button class="btn secondary" disabled>Spotify未登録</button>`}
-            <button class="btn blue" data-action="speak" data-text="${escAttr(lines.map(l => l.lyric).join(". "))}">読み上げ</button>
+            <button class="btn blue" data-action="speak" data-text="${escAttr(lines.map(l => l.lyric).join(". "))}">再生</button>
+            <button class="btn secondary" data-action="speech-pause" type="button">一時停止 / 再開</button>
+            <button class="btn red" data-action="speech-stop" type="button">停止</button>
+            <button class="btn secondary" data-action="speech-rate" data-rate="0.72" data-text="${escAttr(lines.map(l => l.lyric).join(". "))}" type="button">ゆっくり読む</button>
           </div>
         </div>
       </div>
@@ -346,8 +356,8 @@ function openSong(id) {
       <h3 class="section-title">アーティスト情報</h3>
       <div id="artistInfo" class="mini">アーティスト情報を取得中...</div>
     </div>
-    ${s.manual_analysis ? `<div class="card"><h3 class="section-title">ChatGPT解析結果</h3><div class="manual-analysis">${nl(s.manual_analysis)}</div></div>` : ""}
-    <div class="card"><h3 class="section-title">歌詞解説</h3><p class="mini">単語に触れると意味・使い方・例文が出ます。クリックすると単語帳追加画面が開きます。</p>${lines.map(l => lineHtml(l, s.id, s.title, s.artist_name)).join("") || "<p class='mini'>歌詞がありません。</p>"}</div>`;
+    <div class="card"><h3 class="section-title">歌詞解説</h3><p class="mini">まず通常の歌詞解説を表示します。単語に触れると意味・使い方・例文が出ます。クリックすると単語帳追加画面が開きます。</p>${lines.map(l => lineHtml(l, s.id, s.title, s.artist_name)).join("") || "<p class='mini'>歌詞がありません。</p>"}</div>
+    ${s.manual_analysis ? `<div class="card"><details class="manual-analysis-toggle"><summary>ChatGPT解析結果を開く</summary><p class="mini">ChatGPTで作成した解析結果です。必要なときだけ開いて確認できます。</p><div class="manual-analysis">${nl(s.manual_analysis)}</div></details></div>` : ""}`;
   showScreen("detail");
   enrichSongDetail(s, youtubeThumb, savedCover);
 }
@@ -408,7 +418,10 @@ function lineHtml(line, songId, songTitle, artistName) {
       <b>例文</b><br>${nl(formatExamples(examples))}
     </div>
     <div class="actions" style="margin-top:12px">
-      <button class="btn secondary" data-action="speak" data-text="${escAttr(lyric)}">読み上げ</button>
+      <button class="btn secondary" data-action="speak" data-text="${escAttr(lyric)}">再生</button>
+      <button class="btn secondary" data-action="speech-pause" type="button">一時停止 / 再開</button>
+      <button class="btn red" data-action="speech-stop" type="button">停止</button>
+      <button class="btn secondary" data-action="speech-rate" data-rate="0.72" data-text="${escAttr(lyric)}" type="button">ゆっくり読む</button>
       <button class="btn green" type="button">単語をクリックして単語帳へ</button>
     </div>
   </div>`;
@@ -1641,20 +1654,68 @@ function renderLog() {
   qs("#realtimeLog").innerHTML = (logs || []).map(x => `・${esc(x.message)}<br><span class="mini">${fmt(x.created_at)}</span>`).join("<br>") || "変更待機中...";
 }
 
-function speakText(text) {
+function speakText(text, rate = currentSpeechRate) {
   if (!("speechSynthesis" in window)) { toast("このブラウザは読み上げ非対応です"); return; }
+  const value = String(text || "").trim();
+  if (!value) { toast("読み上げる英文がありません"); return; }
   try {
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "en-US";
-    utterance.rate = 0.9;
-    utterance.pitch = 1;
+    currentSpeechText = value;
+    currentSpeechRate = clampSpeechRate(rate);
+    speechPaused = false;
+    currentUtterance = new SpeechSynthesisUtterance(value);
+    currentUtterance.lang = "en-US";
+    currentUtterance.rate = currentSpeechRate;
+    currentUtterance.pitch = 1;
     const voice = window.speechSynthesis.getVoices().find(v => v.lang?.toLowerCase().startsWith("en"));
-    if (voice) utterance.voice = voice;
-    window.speechSynthesis.speak(utterance);
+    if (voice) currentUtterance.voice = voice;
+    currentUtterance.onend = () => { speechPaused = false; currentUtterance = null; };
+    currentUtterance.onerror = () => { speechPaused = false; currentUtterance = null; };
+    window.speechSynthesis.speak(currentUtterance);
+    toast(currentSpeechRate < 0.8 ? "ゆっくり読み上げます" : "読み上げを開始しました");
   } catch {
     toast("読み上げを開始できませんでした");
   }
+}
+
+function pauseOrResumeSpeech() {
+  if (!("speechSynthesis" in window)) { toast("このブラウザは読み上げ非対応です"); return; }
+  if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+    window.speechSynthesis.pause();
+    speechPaused = true;
+    toast("読み上げを一時停止しました");
+    return;
+  }
+  if (window.speechSynthesis.paused || speechPaused) {
+    window.speechSynthesis.resume();
+    speechPaused = false;
+    toast("読み上げを再開しました");
+    return;
+  }
+  toast("再生中の読み上げがありません");
+}
+
+function stopSpeech() {
+  if (!("speechSynthesis" in window)) { toast("このブラウザは読み上げ非対応です"); return; }
+  window.speechSynthesis.cancel();
+  speechPaused = false;
+  currentUtterance = null;
+  toast("読み上げを停止しました");
+}
+
+function setSpeechRate(rate, text = currentSpeechText) {
+  currentSpeechRate = clampSpeechRate(rate);
+  const label = currentSpeechRate <= 0.75 ? "ゆっくり" : currentSpeechRate >= 1.05 ? "少し速く" : "標準";
+  if (text && (window.speechSynthesis.speaking || window.speechSynthesis.paused)) {
+    speakText(text, currentSpeechRate);
+  } else {
+    toast(`読み上げ速度を${label}にしました`);
+  }
+}
+
+function clampSpeechRate(rate) {
+  const value = Number(rate) || 0.9;
+  return Math.max(0.55, Math.min(1.25, value));
 }
 
 function normalizeWord(word) { return String(word || "").replace(/[^A-Za-z']/g, "").toLowerCase(); }
