@@ -13,7 +13,7 @@ let logs = [];
 let currentAnalysis = [];
 let selectedWordContext = null;
 let realtimeStarted = false;
-const APP_PATCH_VERSION = "v13-openai-ai-analysis";
+const APP_PATCH_VERSION = "v14-manual-chatgpt-artist-home";
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka"];
 const COMMON_PASSWORD = "12345";
@@ -75,8 +75,8 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v13-openai-ai-analysis";
-  console.log("Lyrics English v13-openai-ai-analysis loaded");
+  window.LYRICS_ENGLISH_VERSION = "v14-manual-chatgpt-artist-home";
+  console.log("Lyrics English v14-manual-chatgpt-artist-home loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
@@ -90,6 +90,8 @@ function bindStaticEvents() {
   qs("#youtubeBtn").addEventListener("click", autoFillFromYoutube);
   qs("#musicLinksBtn").addEventListener("click", autoFillMusicLinks);
   qs("#lyricsLinksBtn").addEventListener("click", createLyricsLinksFromForm);
+  qs("#makePromptBtn")?.addEventListener("click", makeChatGPTPrompt);
+  qs("#copyPromptBtn")?.addEventListener("click", copyChatGPTPrompt);
   qs("#analyzeBtn").addEventListener("click", analyzeLyrics);
   qs("#saveBtn").addEventListener("click", saveSong);
   qs("#clearBtn").addEventListener("click", clearForm);
@@ -237,9 +239,23 @@ function renderSongs() {
   const filtered = songs.filter(s => `${s.title || ""} ${s.artist_name || ""} ${s.genre || ""}`.toLowerCase().includes(q));
   const stats = qs("#libraryStats");
   if (stats) stats.textContent = `登録曲: ${songs.length}曲 / 参加ユーザー: ${ALLOWED_USERS.map(userDisplayName).join("・")}`;
-  const html = filtered.length ? filtered.map(songListItem).join("") : `<p class="mini">曲がありません。</p>`;
-  qs("#songList").innerHTML = html;
-  qs("#songList2").innerHTML = html;
+  const listHtml = filtered.length ? filtered.map(songListItem).join("") : `<p class="mini">曲がありません。</p>`;
+  qs("#songList").innerHTML = filtered.length ? artistGroupHtml(filtered) : `<p class="mini">曲がありません。</p>`;
+  qs("#songList2").innerHTML = listHtml;
+}
+
+function artistGroupHtml(items) {
+  const groups = items.reduce((acc, song) => {
+    const artist = (song.artist_name || "アーティスト未設定").trim() || "アーティスト未設定";
+    if (!acc[artist]) acc[artist] = [];
+    acc[artist].push(song);
+    return acc;
+  }, {});
+  return Object.keys(groups).sort((a, b) => a.localeCompare(b)).map((artist, index) => `
+    <details class="artist-group" ${index === 0 ? "open" : ""}>
+      <summary><span>${esc(artist)}</span><span class="tag">${groups[artist].length}曲</span></summary>
+      <div class="artist-songs">${groups[artist].map(songListItem).join("")}</div>
+    </details>`).join("");
 }
 
 function songListItem(s) {
@@ -299,7 +315,8 @@ function openSong(id) {
       <h3 class="section-title">アーティスト情報</h3>
       <div id="artistInfo" class="mini">アーティスト情報を取得中...</div>
     </div>
-    <div class="card"><h3 class="section-title">歌詞解説</h3>${lines.map(l => lineHtml(l, s.id, s.title, s.artist_name)).join("") || "<p class='mini'>歌詞がありません。</p>"}</div>`;
+    ${s.manual_analysis ? `<div class="card"><h3 class="section-title">ChatGPT解析結果</h3><div class="manual-analysis">${nl(s.manual_analysis)}</div></div>` : ""}
+    <div class="card"><h3 class="section-title">歌詞解説</h3><p class="mini">単語に触れると意味・使い方・例文が出ます。クリックすると単語帳追加画面が開きます。</p>${lines.map(l => lineHtml(l, s.id, s.title, s.artist_name)).join("") || "<p class='mini'>歌詞がありません。</p>"}</div>`;
   showScreen("detail");
   enrichSongDetail(s, youtubeThumb, savedCover);
 }
@@ -361,7 +378,7 @@ function lineHtml(line, songId, songTitle, artistName) {
     </div>
     <div class="actions" style="margin-top:12px">
       <button class="btn secondary" data-action="speak" data-text="${escAttr(lyric)}">読み上げ</button>
-      <button class="btn green" type="button">単語をタップ</button>
+      <button class="btn green" type="button">単語をクリックして単語帳へ</button>
     </div>
   </div>`;
 }
@@ -666,6 +683,82 @@ function createLyricsLinksFromForm(showToast = true) {
   }
   if (showToast) toast("歌詞確認リンクを作成しました");
   return links;
+}
+
+function buildChatGPTPrompt(title, artist, lyrics) {
+  return `あなたは日本人向けの洋楽英語学習アプリ「Lyrics English」の英語教師です。
+
+以下の洋楽歌詞を、英語学習用に解析してください。
+
+目的：
+・自然な日本語訳を作る
+・使われている文法を短く説明する
+・重要単語の意味、使い方、例文を出す
+・初心者にもわかるようにする
+・説明は長すぎず、アプリに表示しやすい形にする
+
+曲名：
+${title || "未入力"}
+
+アーティスト：
+${artist || "未入力"}
+
+歌詞：
+${lyrics || "未入力"}
+
+出力ルール：
+1行ごとに解析してください。
+説明は以下の形式にしてください。
+
+【英文】
+原文の1行
+
+【自然な和訳】
+自然な日本語訳
+
+【文法ポイント】
+・文法名：短い説明
+・文法名：短い説明
+
+【単語の意味】
+・単語：意味
+　使い方：よく使う形
+　例文：英語例文
+　訳：日本語訳
+
+【例文】
+・英語例文 / 日本語訳
+
+注意：
+・文構造を細かく分解しすぎないでください
+・主語、動詞、目的語のような説明は必要な場合だけにしてください
+・不定詞、動名詞、現在分詞、前置詞、熟語など、実際に使われている文法を優先してください
+・直訳ではなく、歌詞として自然な日本語にしてください
+・出力はそのままアプリに貼れるように、見やすく整理してください`;
+}
+
+function makeChatGPTPrompt() {
+  const title = qs("#songTitle")?.value?.trim() || "";
+  const artist = qs("#artistName")?.value?.trim() || "";
+  const lyrics = qs("#lyricsRaw")?.value?.trim() || "";
+  if (!title || !artist || !lyrics) {
+    toast("曲名・アーティスト名・歌詞を入れてから作成してください");
+  }
+  qs("#chatgptPrompt").value = buildChatGPTPrompt(title, artist, lyrics);
+  toast("ChatGPT用プロンプトを作成しました");
+}
+
+async function copyChatGPTPrompt() {
+  const promptBox = qs("#chatgptPrompt");
+  if (!promptBox.value.trim()) makeChatGPTPrompt();
+  try {
+    await navigator.clipboard.writeText(promptBox.value);
+    toast("プロンプトをコピーしました。ChatGPTに貼り付けてください");
+  } catch (_) {
+    promptBox.select();
+    document.execCommand("copy");
+    toast("プロンプトをコピーしました");
+  }
 }
 
 async function analyzeLyrics() {
@@ -1045,6 +1138,7 @@ async function saveSong() {
     genre: qs("#genre").value.trim(),
     difficulty: qs("#difficulty").value,
     artist_profile: getJapaneseArtistProfile(artistName, qs("#artistProfile").value.trim()),
+    manual_analysis: qs("#manualAnalysis")?.value?.trim() || "",
     lyrics_raw: raw,
     lyric_lines: lines,
     updated_at: new Date().toISOString()
@@ -1065,6 +1159,7 @@ async function saveSong() {
     genre: draftBackup.genre,
     difficulty: draftBackup.difficulty,
     artist_profile: draftBackup.artist_profile,
+    manual_analysis: draftBackup.manual_analysis,
     lyrics_raw: raw,
     lyric_lines: lines,
     created_by: existing?.created_by || currentUser,
@@ -1121,6 +1216,7 @@ async function upsertSongSafely(originalPayload) {
     "artist_image_url",
     "apple_music_url",
     "artist_profile",
+    "manual_analysis",
     "genre",
     "difficulty",
     "updated_by",
@@ -1198,6 +1294,8 @@ function editSong(id) {
   qs("#genre").value = s.genre || "";
   qs("#difficulty").value = s.difficulty || "初級";
   qs("#artistProfile").value = getJapaneseArtistProfile(s.artist_name || "このアーティスト", s.artist_profile || "");
+  qs("#manualAnalysis").value = s.manual_analysis || "";
+  qs("#chatgptPrompt").value = buildChatGPTPrompt(s.title || "", s.artist_name || "", s.lyrics_raw || "");
   qs("#lyricsRaw").value = s.lyrics_raw || "";
   currentAnalysis = Array.isArray(s.lyric_lines) ? s.lyric_lines.map((line, i) => normalizeAIAnalysisLine(line, i)) : [];
   qs("#lyricsLinksPreview").style.display = "none";
@@ -1219,7 +1317,7 @@ async function deleteSong(id) {
 }
 
 function clearForm() {
-  ["editId", "youtubeUrl", "songTitle", "artistName", "appleUrl", "spotifyUrl", "coverArtUrl", "genre", "artistProfile", "lyricsRaw"].forEach(id => qs("#" + id).value = "");
+  ["editId", "youtubeUrl", "songTitle", "artistName", "appleUrl", "spotifyUrl", "coverArtUrl", "genre", "artistProfile", "lyricsRaw", "chatgptPrompt", "manualAnalysis"].forEach(id => { const el = qs("#" + id); if (el) el.value = ""; });
   qs("#difficulty").value = "初級";
   qs("#formTitle").textContent = "曲を追加";
   qs("#lyricsLinksPreview").style.display = "none";
