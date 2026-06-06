@@ -23,6 +23,26 @@
     .print-area{background:white;color:#111;padding:28px;border-radius:18px}.vocab-row{border-bottom:1px solid #ddd;padding:10px 0}
     .artist-group{border:1px solid var(--line);border-radius:18px;margin:14px 0;background:rgba(255,255,255,.03);overflow:hidden}.artist-group summary{cursor:pointer;list-style:none;padding:16px 18px;font-weight:900;font-size:20px;display:flex;justify-content:space-between;align-items:center}.artist-group summary::-webkit-details-marker{display:none}.artist-songs{padding:0 14px 14px}.manual-analysis{white-space:pre-wrap;line-height:1.8;font-size:16px;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:16px;padding:16px}.manual-analysis-toggle{border:0;margin:0;padding:0}.manual-analysis-toggle summary{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--line);border-radius:16px;padding:14px 16px;background:rgba(255,255,255,.05);color:#ffe9a8}.manual-analysis-toggle summary::after{content:"開く";font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 8px}.manual-analysis-toggle[open] summary::after{content:"閉じる"}.latest-song{width:100%;display:flex;justify-content:space-between;gap:12px;align-items:center;text-align:left;background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:18px;color:var(--text);padding:16px;margin-bottom:10px}.latest-song h4{margin:0 0 6px;font-size:18px}.latest-song-main{min-width:0}.latest-open{flex:0 0 auto;color:#ffe9a8;font-weight:900;border:1px solid rgba(230,195,116,.35);border-radius:999px;padding:7px 10px}.speech-help{color:var(--muted);font-size:12px;margin:8px 0 0}.speech-panel{margin-top:16px;padding:14px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.03)}.speech-title{font-size:14px;font-weight:900;color:#ffe9a8;margin-bottom:10px}.speech-actions .btn{min-height:42px;padding:10px 14px}.media-actions{margin-bottom:0}.song-meta-tags{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 10px}@media(max-width:760px){.grid,.two,.media-grid{grid-template-columns:1fr}.hero h2{font-size:30px}.app{padding:14px 14px 104px}.card,.hero{padding:18px;border-radius:22px}.song-item{display:block}.song-item .actions{margin-top:12px}.actions .btn{flex:1}.top .btn{padding:12px 14px;min-height:46px}.artist-card{display:block}.artist-img{margin-bottom:10px}.cover{max-width:240px}.lyrics-line .en{font-size:19px}.sheet{max-height:88vh;overflow:auto}}
     @media print{.top,.tabbar,.no-print,.screen:not(.active),.modal{display:none!important}body{background:white;color:#111}.app{padding:0}.card{box-shadow:none;border:0;background:white;color:#111}@page{size:A4;margin:14mm}}
+ #songList {
+  max-height: 520px;
+  overflow-y: auto;
+  padding-right: 8px;
+  scroll-behavior: smooth;
+}
+
+#songList::-webkit-scrollbar {
+  width: 10px;
+}
+
+#songList::-webkit-scrollbar-thumb {
+  background: rgba(230, 195, 116, 0.45);
+  border-radius: 999px;
+}
+
+#songList::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+}
   </style>
 </head>
 <body>
