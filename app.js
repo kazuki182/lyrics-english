@@ -13,9 +13,9 @@ let logs = [];
 let currentAnalysis = [];
 let selectedWordContext = null;
 let realtimeStarted = false;
-const APP_PATCH_VERSION = "v14-manual-chatgpt-artist-home";
+const APP_PATCH_VERSION = "v17-home-latest-users";
 
-const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka"];
+const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
 const COMMON_PASSWORD = "12345";
 const STOP_WORDS = new Set(["the", "a", "an", "is", "are", "am", "was", "were", "be", "been", "being", "to", "of", "in", "on", "at", "for", "and", "but", "or", "i", "you", "he", "she", "it", "we", "they", "me", "my", "your", "his", "her", "our", "their", "this", "that", "these", "those", "with", "from", "by", "as", "do", "does", "did", "not", "no", "so", "if", "then", "than", "too", "very", "just", "can", "could", "will", "would", "should", "must", "may", "might", "isnt", "dont", "cant", "wont"]);
 
@@ -75,8 +75,8 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v14-manual-chatgpt-artist-home";
-  console.log("Lyrics English v14-manual-chatgpt-artist-home loaded");
+  window.LYRICS_ENGLISH_VERSION = "v17-home-latest-users";
+  console.log("Lyrics English v17-home-latest-users loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
@@ -90,6 +90,7 @@ function bindStaticEvents() {
   qs("#youtubeBtn").addEventListener("click", autoFillFromYoutube);
   qs("#musicLinksBtn").addEventListener("click", autoFillMusicLinks);
   qs("#lyricsLinksBtn").addEventListener("click", createLyricsLinksFromForm);
+  qs("#normalizeLyricsBtn")?.addEventListener("click", normalizeLyricsInput);
   qs("#makePromptBtn")?.addEventListener("click", makeChatGPTPrompt);
   qs("#copyPromptBtn")?.addEventListener("click", copyChatGPTPrompt);
   qs("#analyzeBtn").addEventListener("click", analyzeLyrics);
@@ -160,7 +161,7 @@ function enterApp(id) {
 
 
 function userDisplayName(id) {
-  const names = { kazuki: "Kazuki", shun: "Shun", izumihara: "Izumihara", yoshino: "Yoshino", odaka: "Odaka" };
+  const names = { kazuki: "Kazuki", shun: "Shun", izumihara: "Izumihara", yoshino: "Yoshino", odaka: "Odaka", shion: "Shion", guest: "Guest" };
   return names[String(id || "").toLowerCase()] || id || "User";
 }
 
@@ -239,9 +240,38 @@ function renderSongs() {
   const filtered = songs.filter(s => `${s.title || ""} ${s.artist_name || ""} ${s.genre || ""}`.toLowerCase().includes(q));
   const stats = qs("#libraryStats");
   if (stats) stats.textContent = `登録曲: ${songs.length}曲 / 参加ユーザー: ${ALLOWED_USERS.map(userDisplayName).join("・")}`;
+  const latestBox = qs("#latestSongList");
+  if (latestBox) latestBox.innerHTML = latestSongsHtml(songs);
   const listHtml = filtered.length ? filtered.map(songListItem).join("") : `<p class="mini">曲がありません。</p>`;
   qs("#songList").innerHTML = filtered.length ? artistGroupHtml(filtered) : `<p class="mini">曲がありません。</p>`;
   qs("#songList2").innerHTML = listHtml;
+}
+
+function latestSongsHtml(items) {
+  const latest = [...(items || [])]
+    .sort((a, b) => new Date(b.created_at || b.updated_at || 0) - new Date(a.created_at || a.updated_at || 0))
+    .slice(0, 5);
+
+  if (!latest.length) return `<p class="mini">まだ曲が追加されていません。</p>`;
+
+  return latest.map(s => {
+    const vocabCount = vocab.filter(v => v.song_id === s.id).length;
+    const addedAt = s.created_at || s.updated_at;
+    return `
+      <button class="latest-song" data-action="open-song" data-id="${escAttr(s.id)}">
+        <div class="latest-song-main">
+          <h4>${esc(s.title || "Untitled")}</h4>
+          <div class="muted">${esc(s.artist_name || "アーティスト未設定")}</div>
+          <div>
+            ${s.genre ? `<span class="tag">${esc(s.genre)}</span>` : ""}
+            ${s.difficulty ? `<span class="tag">${esc(s.difficulty)}</span>` : ""}
+            ${vocabCount ? `<span class="tag">保存単語 ${vocabCount}語</span>` : ""}
+          </div>
+          <div class="mini">追加: ${esc(userDisplayName(s.created_by || ""))} / ${fmt(addedAt)}</div>
+        </div>
+        <span class="latest-open">開く</span>
+      </button>`;
+  }).join("");
 }
 
 function artistGroupHtml(items) {
@@ -305,8 +335,9 @@ function openSong(id) {
     <div class="card">
       <h3 class="section-title">歌詞を探す</h3>
       <div class="actions">
+        <a class="btn secondary" href="${escAttr(lyricLinks.geniusDirect)}" target="_blank" rel="noopener">Genius歌詞ページ候補</a>
+        <a class="btn secondary" href="${escAttr(lyricLinks.genius)}" target="_blank" rel="noopener">Genius検索</a>
         <a class="btn secondary" href="${escAttr(lyricLinks.google)}" target="_blank" rel="noopener">Googleで歌詞を探す</a>
-        <a class="btn secondary" href="${escAttr(lyricLinks.genius)}" target="_blank" rel="noopener">Geniusで探す</a>
         <a class="btn secondary" href="${escAttr(lyricLinks.youtube)}" target="_blank" rel="noopener">YouTubeで歌詞動画を探す</a>
       </div>
       <p class="mini">歌詞本文は自動取得せず、リンク先で確認してから手入力してください。</p>
@@ -649,19 +680,57 @@ function makeLyricsSearchLinks(title, artist) {
   const q = [artist, title].filter(Boolean).join(" ").trim();
   const enc = encodeURIComponent(q);
   const plus = encodeURIComponent(`${q} lyrics`);
+  const geniusDirect = makeGeniusLyricsUrl(title, artist);
   return {
     google: q ? `https://www.google.com/search?q=${plus}` : "",
+    geniusDirect,
     genius: q ? `https://genius.com/search?q=${enc}` : "",
     youtube: q ? `https://www.youtube.com/results?search_query=${plus}` : ""
   };
+}
+
+function makeGeniusLyricsUrl(title, artist) {
+  const cleanTitle = cleanSongTitleForGenius(title);
+  const cleanArtist = cleanArtistForGenius(artist);
+  if (!cleanTitle || !cleanArtist) return "";
+  return `https://genius.com/${toGeniusSlug(`${cleanArtist} ${cleanTitle}`)}-lyrics`;
+}
+
+function cleanSongTitleForGenius(title) {
+  return String(title || "")
+    .replace(/\([^)]*(official|lyrics?|audio|video|mv|hd|4k)[^)]*\)/ig, " ")
+    .replace(/\[[^\]]*(official|lyrics?|audio|video|mv|hd|4k)[^\]]*\]/ig, " ")
+    .replace(/Official|Music Video|Lyric Video|Lyrics|Audio/ig, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function cleanArtistForGenius(artist) {
+  return String(artist || "")
+    .replace(/\s*VEVO$/i, "")
+    .replace(/\s*-\s*Topic$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function toGeniusSlug(value) {
+  return String(value || "")
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/&/g, " and ")
+    .replace(/[’']/g, "")
+    .replace(/[^A-Za-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 function normalizeLyricsLinks(value) {
   if (typeof value === "string") {
     try { return normalizeLyricsLinks(JSON.parse(value)); } catch { return makeLyricsSearchLinks("", ""); }
   }
+  const fallbackDirect = value?.geniusDirect || value?.genius_url || "";
   return {
     google: value?.google || "",
+    geniusDirect: fallbackDirect,
     genius: value?.genius || "",
     youtube: value?.youtube || ""
   };
@@ -677,8 +746,9 @@ function createLyricsLinksFromForm(showToast = true) {
   if (preview && box) {
     preview.style.display = "block";
     box.innerHTML = `
+      <a class="btn secondary" href="${escAttr(links.geniusDirect)}" target="_blank" rel="noopener">Genius歌詞ページ候補</a>
+      <a class="btn secondary" href="${escAttr(links.genius)}" target="_blank" rel="noopener">Genius検索</a>
       <a class="btn secondary" href="${escAttr(links.google)}" target="_blank" rel="noopener">Googleで歌詞を探す</a>
-      <a class="btn secondary" href="${escAttr(links.genius)}" target="_blank" rel="noopener">Geniusで探す</a>
       <a class="btn secondary" href="${escAttr(links.youtube)}" target="_blank" rel="noopener">YouTubeで歌詞動画を探す</a>`;
   }
   if (showToast) toast("歌詞確認リンクを作成しました");
@@ -740,10 +810,11 @@ ${lyrics || "未入力"}
 function makeChatGPTPrompt() {
   const title = qs("#songTitle")?.value?.trim() || "";
   const artist = qs("#artistName")?.value?.trim() || "";
-  const lyrics = qs("#lyricsRaw")?.value?.trim() || "";
+  const lyrics = normalizeLyricsText(qs("#lyricsRaw")?.value?.trim() || "");
   if (!title || !artist || !lyrics) {
     toast("曲名・アーティスト名・歌詞を入れてから作成してください");
   }
+  if (lyrics && qs("#lyricsRaw")?.value?.trim() !== lyrics) qs("#lyricsRaw").value = lyrics;
   qs("#chatgptPrompt").value = buildChatGPTPrompt(title, artist, lyrics);
   toast("ChatGPT用プロンプトを作成しました");
 }
@@ -761,12 +832,117 @@ async function copyChatGPTPrompt() {
   }
 }
 
+function normalizeLyricsInput() {
+  const box = qs("#lyricsRaw");
+  if (!box) return;
+  const original = box.value.trim();
+  if (!original) { toast("歌詞を貼り付けてください"); return; }
+  const normalized = normalizeLyricsText(original);
+  box.value = normalized;
+  const count = splitLyricsLines(normalized).length;
+  toast(`歌詞を${count}行に補正しました`);
+}
+
+function normalizeLyricsText(raw) {
+  const text = String(raw || "")
+    .replace(/\r/g, "")
+    .replace(/[’‘´`]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\u00a0/g, " ")
+    .trim();
+  if (!text) return "";
+
+  const existingLines = text.split(/\n+/).map(cleanLyricLine).filter(Boolean);
+  if (existingLines.length >= 2) return existingLines.join("\n");
+
+  return splitCollapsedLyrics(text).join("\n");
+}
+
+function cleanLyricLine(line) {
+  return String(line || "")
+    .replace(/\s+/g, " ")
+    .replace(/\s+([,.!?;:])/g, "$1")
+    .trim();
+}
+
+function splitLyricsLines(text) {
+  return normalizeLyricsText(text).split(/\n+/).map(cleanLyricLine).filter(Boolean);
+}
+
+function splitCollapsedLyrics(text) {
+  let t = cleanLyricLine(text);
+  if (!t) return [];
+
+  // 文末記号がある場合は、まずそこで自然に分けます。
+  t = t.replace(/([.!?])\s+(?=[A-Z0-9])/g, "$1\n");
+
+  // 歌詞でよくある「大文字で始まる次のフレーズ」を行頭にします。
+  const starters = [
+    "Remember", "Broke", "Nothin'", "Nothing", "Tomorrow", "Beat", "Every",
+    "The sticks", "The stones", "Built", "So you", "To cry", "You are",
+    "I will", "I was", "I am", "I'm", "Cause", "'cause", "Because"
+  ];
+  starters.forEach(starter => {
+    const escaped = starter.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`\\s+(${escaped}\\b)`, "g");
+    t = t.replace(re, "\n$1");
+  });
+
+  let lines = t.split(/\n+/).map(cleanLyricLine).filter(Boolean);
+
+  // まだ長すぎる行は、カンマ・接続語・繰り返しフレーズで追加分割します。
+  lines = lines.flatMap(line => splitLongLyricLine(line));
+
+  // 極端に短い記号だけの行を除外し、行番号付き解析しやすい形に整えます。
+  return lines.map(cleanLyricLine).filter(line => /[A-Za-z0-9]/.test(line));
+}
+
+function splitLongLyricLine(line) {
+  const maxLen = 92;
+  if (line.length <= maxLen) return [line];
+
+  let t = line
+    .replace(/,\s+(?=(?:and|but|so|cause|because|tomorrow|every|the|you|i)\b)/ig, ",\n")
+    .replace(/\s+(?=(?:So you|Tomorrow|Every wound|Every scar|Beat me|The sticks|Built me|You are|To cry)\b)/g, "\n");
+
+  let parts = t.split(/\n+/).map(cleanLyricLine).filter(Boolean);
+  if (parts.every(p => p.length <= maxLen)) return parts;
+
+  const result = [];
+  parts.forEach(part => {
+    if (part.length <= maxLen) {
+      result.push(part);
+      return;
+    }
+    const words = part.split(/\s+/);
+    let current = "";
+    words.forEach(word => {
+      const next = current ? `${current} ${word}` : word;
+      if (next.length > maxLen && current) {
+        result.push(current);
+        current = word;
+      } else {
+        current = next;
+      }
+    });
+    if (current) result.push(current);
+  });
+  return result;
+}
+
 async function analyzeLyrics() {
-  const raw = qs("#lyricsRaw").value.trim();
-  if (!raw) { toast("歌詞を貼り付けてください"); return; }
+  const originalRaw = qs("#lyricsRaw").value.trim();
+  if (!originalRaw) { toast("歌詞を貼り付けてください"); return; }
+
+  const raw = normalizeLyricsText(originalRaw);
+  if (raw !== originalRaw) {
+    qs("#lyricsRaw").value = raw;
+    toast("歌詞を1行ずつに補正しました");
+  }
+
   qs("#lyricsLinksPreview").style.display = "none";
   qs("#lyricsLinksBox").innerHTML = "";
-  qs("#analysisPreview").innerHTML = "<p class='mini'>AI解析中です。少し待ってください...</p>";
+  qs("#analysisPreview").innerHTML = "<p class='mini'>AI解析中です。歌詞を1行ずつ解析しています...</p>";
   const title = qs("#songTitle")?.value?.trim() || "";
   const artist = qs("#artistName")?.value?.trim() || "";
   try {
@@ -775,9 +951,9 @@ async function analyzeLyrics() {
     toast("AI解析が完了しました");
   } catch (error) {
     console.error("AI analysis failed", error);
-    currentAnalysis = raw.split(/\n+/).map((line, i) => makeLine(line.trim(), i + 1)).filter(l => l.lyric);
+    currentAnalysis = splitLyricsLines(raw).map((line, i) => makeLine(line, i + 1)).filter(l => l.lyric);
     qs("#analysisPreview").innerHTML = currentAnalysis.map(l => lineHtml(l, "preview", "", "")).join("");
-    toast("AI解析に失敗しました。簡易解析で表示します: " + (error.message || "不明なエラー"));
+    toast("AI解析に失敗しました。1行ずつの簡易解析で表示します: " + (error.message || "不明なエラー"));
   }
 }
 
@@ -1103,7 +1279,8 @@ function prepositionText(line) {
 
 async function saveSong() {
   const id = qs("#editId").value || crypto.randomUUID();
-  const raw = qs("#lyricsRaw").value.trim();
+  const raw = normalizeLyricsText(qs("#lyricsRaw").value.trim());
+  qs("#lyricsRaw").value = raw;
   const title = qs("#songTitle").value.trim();
   const artistName = qs("#artistName").value.trim();
 
