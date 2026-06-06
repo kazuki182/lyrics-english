@@ -15,9 +15,9 @@ let selectedWordContext = null;
 let realtimeStarted = false;
 let currentUtterance = null;
 let currentSpeechText = "";
-let currentSpeechRate = 0.9;
+let currentSpeechRate = 1;
 let speechPaused = false;
-const APP_PATCH_VERSION = "v19-speech-controls";
+const APP_PATCH_VERSION = "v20-metadata-speech-update";
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
 const COMMON_PASSWORD = "12345";
@@ -79,8 +79,8 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v19-speech-controls";
-  console.log("Lyrics English v19-speech-controls loaded");
+  window.LYRICS_ENGLISH_VERSION = "v20-metadata-speech-update";
+  console.log("Lyrics English v20-metadata-speech-update loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
@@ -128,7 +128,8 @@ function handleDelegatedClick(e) {
     if (name === "speak") speakText(action.dataset.text || "", Number(action.dataset.rate) || currentSpeechRate);
     if (name === "speech-pause") pauseOrResumeSpeech();
     if (name === "speech-stop") stopSpeech();
-    if (name === "speech-rate") setSpeechRate(Number(action.dataset.rate) || 0.9, action.dataset.text || currentSpeechText);
+    if (name === "speech-rate") setSpeechRate(Number(action.dataset.rate) || 1, action.dataset.text || currentSpeechText);
+    if (name === "refresh-metadata") refreshSongMetadata(id);
     if (name === "delete-vocab") deleteVocab(id);
     return;
   }
@@ -329,15 +330,28 @@ function openSong(id) {
         <div>
           <h3 class="section-title">${esc(s.title)}</h3>
           <p class="muted">${esc(s.artist_name || "")} / 追加: ${esc(s.created_by || "")} / 更新: ${esc(s.updated_by || "")}</p>
+          <div class="song-meta-tags">
+            <span class="tag">ジャンル: ${esc(s.genre || "未設定")}</span>
+            <span class="tag">難易度: ${esc(s.difficulty || "初級")}</span>
+          </div>
           <p>${esc(getDisplayArtistProfile(s))}</p>
-          <div class="actions">
+          <div class="actions media-actions">
             ${s.youtube_url ? `<a class="btn" href="${escAttr(s.youtube_url)}" target="_blank" rel="noopener">YouTube</a>` : `<button class="btn secondary" disabled>YouTube未登録</button>`}
             ${s.apple_music_url ? `<a class="btn secondary" href="${escAttr(s.apple_music_url)}" target="_blank" rel="noopener">Apple Music</a>` : `<button class="btn secondary" disabled>Apple Music未登録</button>`}
             ${spotifyUrl ? `<a class="btn secondary" href="${escAttr(spotifyUrl)}" target="_blank" rel="noopener">Spotify</a>` : `<button class="btn secondary" disabled>Spotify未登録</button>`}
-            <button class="btn blue" data-action="speak" data-text="${escAttr(lines.map(l => l.lyric).join(". "))}">再生</button>
-            <button class="btn secondary" data-action="speech-pause" type="button">一時停止 / 再開</button>
-            <button class="btn red" data-action="speech-stop" type="button">停止</button>
-            <button class="btn secondary" data-action="speech-rate" data-rate="0.72" data-text="${escAttr(lines.map(l => l.lyric).join(". "))}" type="button">ゆっくり読む</button>
+            <button class="btn secondary" data-action="refresh-metadata" data-id="${escAttr(s.id)}" type="button">曲情報を更新</button>
+          </div>
+          <div class="speech-panel">
+            <div class="speech-title">読み上げ</div>
+            <div class="actions speech-actions">
+              <button class="btn blue" data-action="speak" data-rate="1" data-text="${escAttr(lines.map(l => l.lyric).join(". "))}">再生</button>
+              <button class="btn secondary" data-action="speech-pause" type="button">一時停止 / 再開</button>
+              <button class="btn red" data-action="speech-stop" type="button">停止</button>
+              <button class="btn secondary" data-action="speech-rate" data-rate="1" data-text="${escAttr(lines.map(l => l.lyric).join(". "))}" type="button">1.0倍</button>
+              <button class="btn secondary" data-action="speech-rate" data-rate="0.5" data-text="${escAttr(lines.map(l => l.lyric).join(". "))}" type="button">0.5倍</button>
+              <button class="btn secondary" data-action="speech-rate" data-rate="0.25" data-text="${escAttr(lines.map(l => l.lyric).join(". "))}" type="button">0.25倍</button>
+            </div>
+            <p class="mini">英語が速い場合は0.5倍、かなりゆっくり確認したい場合は0.25倍を使ってください。</p>
           </div>
         </div>
       </div>
@@ -385,12 +399,14 @@ function renderArtistInfo(info) {
     box.innerHTML = `<p>アーティスト情報を取得できませんでした。</p>`;
     return;
   }
+  const genreText = info.genre ? `<p class="mini"><b>ジャンル候補：</b>${esc(info.genre)}${info.genreSource ? ` / ${esc(info.genreSource)}` : ""}</p>` : "";
   box.innerHTML = `
     <div class="artist-card">
       ${info.image ? `<img class="artist-img" src="${escAttr(info.image)}" alt="${escAttr(info.name)}">` : ""}
       <div>
         <h4 style="margin:0 0 8px">${esc(info.name)}</h4>
         <p>${esc(info.extract)}</p>
+        ${genreText}
         ${info.url ? `<a class="dict-link" href="${escAttr(info.url)}" target="_blank" rel="noopener">Wikipediaで見る</a>` : ""}
       </div>
     </div>`;
@@ -418,10 +434,11 @@ function lineHtml(line, songId, songTitle, artistName) {
       <b>例文</b><br>${nl(formatExamples(examples))}
     </div>
     <div class="actions" style="margin-top:12px">
-      <button class="btn secondary" data-action="speak" data-text="${escAttr(lyric)}">再生</button>
+      <button class="btn secondary" data-action="speak" data-rate="1" data-text="${escAttr(lyric)}">再生</button>
       <button class="btn secondary" data-action="speech-pause" type="button">一時停止 / 再開</button>
       <button class="btn red" data-action="speech-stop" type="button">停止</button>
-      <button class="btn secondary" data-action="speech-rate" data-rate="0.72" data-text="${escAttr(lyric)}" type="button">ゆっくり読む</button>
+      <button class="btn secondary" data-action="speech-rate" data-rate="0.5" data-text="${escAttr(lyric)}" type="button">0.5倍</button>
+      <button class="btn secondary" data-action="speech-rate" data-rate="0.25" data-text="${escAttr(lyric)}" type="button">0.25倍</button>
       <button class="btn green" type="button">単語をクリックして単語帳へ</button>
     </div>
   </div>`;
@@ -592,26 +609,131 @@ function getDisplayArtistProfile(song) {
 }
 
 async function fetchArtistInfo(artistName) {
-  const name = (artistName || "").trim();
-  if (!name) return null;
+  const rawName = (artistName || "").trim();
+  if (!rawName) return null;
+  const candidates = uniqueTextValues([
+    rawName,
+    titleCaseArtist(rawName),
+    rawName.replace(/\s+-\s+Topic$/i, ""),
+    rawName.replace(/VEVO$/i, "")
+  ]);
+
   for (const lang of ["ja", "en"]) {
-    try {
-      const res = await fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(name)}`);
-      if (!res.ok) continue;
-      const json = await res.json();
-      if (json.type === "disambiguation" || !json.extract) continue;
-      const isJapanese = lang === "ja" || hasJapaneseText(json.extract || "");
+    for (const candidate of candidates) {
+      const summary = await fetchWikipediaSummary(candidate, lang);
+      if (!summary) continue;
+      const genreInfo = await fetchGenreInfo(summary.title || candidate, summary.extract || "");
+      const isJapanese = lang === "ja" || hasJapaneseText(summary.extract || "");
       return {
-        name: json.title || name,
-        extract: isJapanese ? json.extract : getJapaneseArtistProfile(name, json.extract),
-        image: json.thumbnail?.source || json.originalimage?.source || "",
-        url: json.content_urls?.desktop?.page || json.content_urls?.mobile?.page || ""
+        name: summary.title || candidate,
+        extract: isJapanese ? summary.extract : getJapaneseArtistProfile(summary.title || candidate, summary.extract),
+        image: summary.thumbnail?.source || summary.originalimage?.source || "",
+        url: summary.content_urls?.desktop?.page || summary.content_urls?.mobile?.page || "",
+        genre: genreInfo.genre || inferGenreFromText(summary.extract || ""),
+        genreSource: genreInfo.source || (inferGenreFromText(summary.extract || "") ? "Wikipedia概要から推定" : "")
       };
-    } catch (e) {
-      console.warn("Wikimedia lookup failed", e);
     }
   }
   return null;
+}
+
+async function fetchWikipediaSummary(name, lang = "ja") {
+  const title = String(name || "").trim();
+  if (!title) return null;
+  const direct = await fetchWikipediaSummaryByTitle(title, lang);
+  if (direct) return direct;
+  try {
+    const searchUrl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(title)}&format=json&origin=*`;
+    const searchRes = await fetch(searchUrl);
+    if (!searchRes.ok) return null;
+    const searchJson = await searchRes.json();
+    const best = (searchJson.query?.search || []).find(x => /band|artist|singer|musician|グループ|バンド|歌手|音楽/i.test(`${x.title} ${stripHtml(x.snippet || "")}`)) || searchJson.query?.search?.[0];
+    if (!best?.title) return null;
+    return await fetchWikipediaSummaryByTitle(best.title, lang);
+  } catch (e) {
+    console.warn("Wikipedia search failed", e);
+    return null;
+  }
+}
+
+async function fetchWikipediaSummaryByTitle(title, lang = "ja") {
+  try {
+    const res = await fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`);
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (json.type === "disambiguation" || !json.extract) return null;
+    return json;
+  } catch (e) {
+    console.warn("Wikimedia summary failed", e);
+    return null;
+  }
+}
+
+async function fetchGenreInfo(artistName, fallbackText = "") {
+  const fallbackGenre = inferGenreFromText(fallbackText);
+  try {
+    const searchUrl = `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(artistName)}&language=en&format=json&origin=*`;
+    const searchRes = await fetch(searchUrl);
+    if (!searchRes.ok) return { genre: fallbackGenre, source: fallbackGenre ? "Wikipedia概要から推定" : "" };
+    const searchJson = await searchRes.json();
+    const entityId = searchJson.search?.[0]?.id;
+    if (!entityId) return { genre: fallbackGenre, source: fallbackGenre ? "Wikipedia概要から推定" : "" };
+    const entityUrl = `https://www.wikidata.org/wiki/Special:EntityData/${encodeURIComponent(entityId)}.json`;
+    const entityRes = await fetch(entityUrl);
+    if (!entityRes.ok) return { genre: fallbackGenre, source: fallbackGenre ? "Wikipedia概要から推定" : "" };
+    const entityJson = await entityRes.json();
+    const claims = entityJson.entities?.[entityId]?.claims?.P136 || [];
+    const labels = claims.map(claim => {
+      const id = claim.mainsnak?.datavalue?.value?.id;
+      if (!id) return "";
+      const entity = entityJson.entities?.[id];
+      return entity?.labels?.ja?.value || entity?.labels?.en?.value || "";
+    }).filter(Boolean);
+    if (labels.length) return { genre: labels.slice(0, 4).join(" / "), source: "Wikidata" };
+  } catch (e) {
+    console.warn("Wikidata genre lookup failed", e);
+  }
+  return { genre: fallbackGenre, source: fallbackGenre ? "Wikipedia概要から推定" : "" };
+}
+
+function inferGenreFromText(text = "") {
+  const value = String(text || "").toLowerCase();
+  const genres = [];
+  const rules = [
+    ["post-hardcore", "Post-hardcore"],
+    ["metalcore", "Metalcore"],
+    ["alternative rock", "Alternative rock"],
+    ["emo", "Emo"],
+    ["hard rock", "Hard rock"],
+    ["rock band", "Rock"],
+    ["pop punk", "Pop punk"],
+    ["punk rock", "Punk rock"],
+    ["nu metal", "Nu metal"],
+    ["hip hop", "Hip hop"],
+    ["r&b", "R&B"],
+    ["pop", "Pop"],
+    ["electronic", "Electronic"]
+  ];
+  rules.forEach(([needle, label]) => { if (value.includes(needle) && !genres.includes(label)) genres.push(label); });
+  return genres.slice(0, 4).join(" / ");
+}
+
+function titleCaseArtist(name) {
+  return String(name || "").toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase());
+}
+
+function uniqueTextValues(values) {
+  const seen = new Set();
+  return values.map(v => String(v || "").trim()).filter(v => {
+    const key = v.toLowerCase();
+    if (!v || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function stripHtml(value) {
+  return String(value || "").replace(/<[^>]*>/g, " ");
 }
 
 async function fetchCoverArt(title, artist) {
@@ -1494,6 +1616,36 @@ function editSong(id) {
   showScreen("add");
 }
 
+async function refreshSongMetadata(id) {
+  const song = songs.find(x => x.id === id);
+  if (!song) return;
+  toast("曲情報を更新中です...");
+  const [artistInfo, coverUrl] = await Promise.all([
+    fetchArtistInfo(song.artist_name),
+    fetchCoverArt(song.title, song.artist_name)
+  ]);
+  const patch = {
+    id: song.id,
+    title: song.title,
+    artist_name: song.artist_name,
+    artist_profile: artistInfo?.extract || getDisplayArtistProfile(song),
+    genre: artistInfo?.genre || song.genre || "",
+    cover_art_url: song.cover_art_url || coverUrl || "",
+    updated_by: currentUser,
+    updated_at: new Date().toISOString()
+  };
+  const result = await upsertSongSafely({ ...song, ...patch });
+  if (!result.ok) {
+    toast("曲情報の更新に失敗: " + (result.error?.message || "不明なエラー"));
+    return;
+  }
+  await addLog(`${currentUser} が「${song.title}」の曲情報を更新しました`);
+  await fetchSongs();
+  renderSongs();
+  openSong(id);
+  toast("曲情報を更新しました");
+}
+
 async function deleteSong(id) {
   if (!confirm("削除しますか？")) return;
   const title = songs.find(s => s.id === id)?.title || "曲";
@@ -1672,7 +1824,7 @@ function speakText(text, rate = currentSpeechRate) {
     currentUtterance.onend = () => { speechPaused = false; currentUtterance = null; };
     currentUtterance.onerror = () => { speechPaused = false; currentUtterance = null; };
     window.speechSynthesis.speak(currentUtterance);
-    toast(currentSpeechRate < 0.8 ? "ゆっくり読み上げます" : "読み上げを開始しました");
+    toast(currentSpeechRate < 1 ? `${currentSpeechRate}倍で読み上げます` : "読み上げを開始しました");
   } catch {
     toast("読み上げを開始できませんでした");
   }
@@ -1705,7 +1857,7 @@ function stopSpeech() {
 
 function setSpeechRate(rate, text = currentSpeechText) {
   currentSpeechRate = clampSpeechRate(rate);
-  const label = currentSpeechRate <= 0.75 ? "ゆっくり" : currentSpeechRate >= 1.05 ? "少し速く" : "標準";
+  const label = currentSpeechRate <= 0.3 ? "かなりゆっくり" : currentSpeechRate <= 0.6 ? "ゆっくり" : "標準";
   if (text && (window.speechSynthesis.speaking || window.speechSynthesis.paused)) {
     speakText(text, currentSpeechRate);
   } else {
@@ -1714,8 +1866,8 @@ function setSpeechRate(rate, text = currentSpeechText) {
 }
 
 function clampSpeechRate(rate) {
-  const value = Number(rate) || 0.9;
-  return Math.max(0.55, Math.min(1.25, value));
+  const value = Number(rate) || 1;
+  return Math.max(0.25, Math.min(1.25, value));
 }
 
 function normalizeWord(word) { return String(word || "").replace(/[^A-Za-z']/g, "").toLowerCase(); }
