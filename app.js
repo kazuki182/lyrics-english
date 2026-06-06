@@ -13,7 +13,7 @@ let logs = [];
 let currentAnalysis = [];
 let selectedWordContext = null;
 let realtimeStarted = false;
-const APP_PATCH_VERSION = "v12-double-load-ai-ui-fix";
+const APP_PATCH_VERSION = "v13-openai-ai-analysis";
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka"];
 const COMMON_PASSWORD = "12345";
@@ -75,8 +75,8 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v12-double-load-ai-ui-fix";
-  console.log("Lyrics English v12-double-load-ai-ui-fix loaded");
+  window.LYRICS_ENGLISH_VERSION = "v13-openai-ai-analysis";
+  console.log("Lyrics English v13-openai-ai-analysis loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
@@ -339,15 +339,14 @@ function renderArtistInfo(info) {
 }
 
 function lineHtml(line, songId, songTitle, artistName) {
-  // v11: Supabaseに残っている古い分析結果は画面表示に使わず、必ず歌詞本文から再解析する。
   const lyric = String(line?.lyric || "").trim();
-  const g = grammarObject(lyric);
-  const translation = translateLine(lyric);
-  const notes = grammarNotes(lyric, g.points || []).slice(0, 4);
-  const words = vocabularyItems(lyric).slice(0, 6);
-  const examples = similarExamples(lyric).slice(0, 2);
+  const g = normalizeAnalysisLine(line);
+  const translation = g.translation || translateLine(lyric);
+  const notes = (g.notes && g.notes.length ? g.notes : grammarNotes(lyric, g.points || [])).slice(0, 5);
+  const words = (g.words && g.words.length ? g.words : vocabularyItems(lyric)).slice(0, 8);
+  const examples = (g.examples && g.examples.length ? g.examples : similarExamples(lyric)).slice(0, 3);
   return `<div class="lyrics-line">
-    <div class="en">${wordify(line.lyric, songId, line.line_no, songTitle, artistName)}</div>
+    <div class="en">${wordify(lyric, songId, line.line_no, songTitle, artistName)}</div>
     <div class="jp"><b>自然な和訳：</b>${esc(translation)}</div>
     <div class="mini compact-analysis">
       <b>文法ポイント（要約）</b>
@@ -356,12 +355,12 @@ function lineHtml(line, songId, songTitle, artistName) {
       </ul>
       <b>単語の意味</b>
       <ul class="grammar-list">
-        ${(words.length ? words : [{ word: "重要単語", meaning: "少なめです" }]).map(w => `<li><b>${esc(w.word)}</b>: ${esc(w.meaning)}</li>`).join("")}
+        ${(words.length ? words : [{ word: "重要単語", meaning: "少なめです" }]).map(w => `<li><b>${esc(w.word)}</b>: ${esc(w.meaning || "意味を確認してください")}${w.usage ? ` / ${esc(w.usage)}` : ""}</li>`).join("")}
       </ul>
-      <b>例文</b><br>${nl(examples.join("\n"))}
+      <b>例文</b><br>${nl(formatExamples(examples))}
     </div>
     <div class="actions" style="margin-top:12px">
-      <button class="btn secondary" data-action="speak" data-text="${escAttr(line.lyric)}">読み上げ</button>
+      <button class="btn secondary" data-action="speak" data-text="${escAttr(lyric)}">読み上げ</button>
       <button class="btn green" type="button">単語をタップ</button>
     </div>
   </div>`;
@@ -669,14 +668,88 @@ function createLyricsLinksFromForm(showToast = true) {
   return links;
 }
 
-function analyzeLyrics() {
+async function analyzeLyrics() {
   const raw = qs("#lyricsRaw").value.trim();
   if (!raw) { toast("歌詞を貼り付けてください"); return; }
-  currentAnalysis = raw.split(/\n+/).map((line, i) => makeLine(line.trim(), i + 1)).filter(l => l.lyric);
   qs("#lyricsLinksPreview").style.display = "none";
   qs("#lyricsLinksBox").innerHTML = "";
-  qs("#analysisPreview").innerHTML = currentAnalysis.map(l => lineHtml(l, "preview", "", "")).join("");
-  toast("和訳・文法・単語の簡潔な解説を作成しました");
+  qs("#analysisPreview").innerHTML = "<p class='mini'>AI解析中です。少し待ってください...</p>";
+  const title = qs("#songTitle")?.value?.trim() || "";
+  const artist = qs("#artistName")?.value?.trim() || "";
+  try {
+    currentAnalysis = await analyzeLyricsWithAI(raw, title, artist);
+    qs("#analysisPreview").innerHTML = currentAnalysis.map(l => lineHtml(l, "preview", "", "")).join("");
+    toast("AI解析が完了しました");
+  } catch (error) {
+    console.error("AI analysis failed", error);
+    currentAnalysis = raw.split(/\n+/).map((line, i) => makeLine(line.trim(), i + 1)).filter(l => l.lyric);
+    qs("#analysisPreview").innerHTML = currentAnalysis.map(l => lineHtml(l, "preview", "", "")).join("");
+    toast("AI解析に失敗しました。簡易解析で表示します: " + (error.message || "不明なエラー"));
+  }
+}
+
+async function analyzeLyricsWithAI(raw, title = "", artist = "") {
+  const res = await fetch("/api/analyze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ lyrics: raw, title, artist })
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(json.error || json.message || "AI API error");
+  }
+  const lines = Array.isArray(json.lines) ? json.lines : [];
+  if (!lines.length) throw new Error("AI解析結果が空でした");
+  return lines.map((line, index) => normalizeAIAnalysisLine(line, index)).filter(l => l.lyric);
+}
+
+function normalizeAIAnalysisLine(line, index = 0) {
+  const lyric = String(line?.lyric || "").trim();
+  const grammarItems = Array.isArray(line?.grammar) ? line.grammar : [];
+  const wordItems = Array.isArray(line?.words) ? line.words : [];
+  const exampleItems = Array.isArray(line?.examples) ? line.examples : [];
+  return {
+    line_no: Number(line?.line_no) || index + 1,
+    lyric,
+    translation: cleanTranslation(line?.translation, lyric) || translateLine(lyric),
+    grammar: {
+      translation: cleanTranslation(line?.translation, lyric) || translateLine(lyric),
+      points: grammarItems.map(g => g.name || g.title || "文法").filter(Boolean),
+      notes: grammarItems.map(g => `${g.name || "文法"}: ${g.explanation || "この文で使われています。"}`).filter(Boolean),
+      words: wordItems.map(w => ({
+        word: normalizeWord(w.word || ""),
+        meaning: w.meaning || "意味を確認してください",
+        usage: w.usage || "",
+        example: w.example || "",
+        example_ja: w.example_ja || ""
+      })).filter(w => w.word),
+      examples: exampleItems.map(ex => `${ex.en || ""} / ${ex.ja || ""}`.trim()).filter(Boolean)
+    },
+    vocabulary: wordItems.map(w => `・${w.word}: ${w.meaning}`).join("\n"),
+    preposition: "AI解析済み"
+  };
+}
+
+function normalizeAnalysisLine(line) {
+  const lyric = String(line?.lyric || "").trim();
+  if (line?.grammar && typeof line.grammar === "object") {
+    const g = line.grammar;
+    return {
+      translation: cleanTranslation(line.translation || g.translation, lyric) || translateLine(lyric),
+      points: Array.isArray(g.points) ? g.points : [],
+      notes: Array.isArray(g.notes) ? g.notes : [],
+      words: Array.isArray(g.words) ? g.words : [],
+      examples: Array.isArray(g.examples) ? g.examples : []
+    };
+  }
+  return grammarObject(lyric);
+}
+
+function formatExamples(examples) {
+  return (examples || []).map(ex => {
+    if (typeof ex === "string") return ex;
+    return `${ex.en || ""} / ${ex.ja || ""}`.trim();
+  }).filter(Boolean).join("\n");
 }
 
 function makeLine(line, no) {
@@ -951,9 +1024,14 @@ async function saveSong() {
     ? currentAnalysis
     : raw.split(/\n+/).map((line, i) => makeLine(line.trim(), i + 1)).filter(l => l.lyric);
 
-  // 古い保存データに「自然な日本語に訳してください」などの仮文が残っていても、
-  // 保存時に必ず現在のロジックで再分析してからSupabaseへ入れる。
-  const lines = sourceLines.map((line, i) => refreshLineAnalysis(line, i)).filter(l => l.lyric);
+  // AI解析済みデータがある場合はそれを保存する。未解析または古い仮文だけの場合は簡易解析で補完する。
+  const lines = sourceLines.map((line, i) => {
+    const lyric = String(line?.lyric || line || "").trim();
+    if (line?.grammar && typeof line.grammar === "object" && !isPlaceholderTranslation(line?.translation)) {
+      return normalizeAIAnalysisLine(line, i);
+    }
+    return refreshLineAnalysis({ lyric, line_no: Number(line?.line_no) || i + 1 }, i);
+  }).filter(l => l.lyric);
 
   // まず画面上の入力をバックアップする。Supabase保存で失敗しても歌詞が消えないようにする。
   const draftBackup = {
@@ -1121,7 +1199,7 @@ function editSong(id) {
   qs("#difficulty").value = s.difficulty || "初級";
   qs("#artistProfile").value = getJapaneseArtistProfile(s.artist_name || "このアーティスト", s.artist_profile || "");
   qs("#lyricsRaw").value = s.lyrics_raw || "";
-  currentAnalysis = Array.isArray(s.lyric_lines) ? s.lyric_lines.map((line, i) => refreshLineAnalysis(line, i)) : [];
+  currentAnalysis = Array.isArray(s.lyric_lines) ? s.lyric_lines.map((line, i) => normalizeAIAnalysisLine(line, i)) : [];
   qs("#lyricsLinksPreview").style.display = "none";
   qs("#lyricsLinksBox").innerHTML = "";
   qs("#analysisPreview").innerHTML = currentAnalysis.map(l => lineHtml(l, s.id, s.title, s.artist_name)).join("");
