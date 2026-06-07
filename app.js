@@ -17,7 +17,7 @@ let currentUtterance = null;
 let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
-const APP_PATCH_VERSION = "v24-stable-mobile-manual-analysis";
+const APP_PATCH_VERSION = "v25-manual-analysis-priority";
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
 const COMMON_PASSWORD = "12345";
@@ -79,8 +79,8 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v24-stable-mobile-manual-analysis";
-  console.log("Lyrics English v24-stable-mobile-manual-analysis loaded");
+  window.LYRICS_ENGLISH_VERSION = "v25-manual-analysis-priority";
+  console.log("Lyrics English v25-manual-analysis-priority loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
@@ -316,7 +316,10 @@ function songListItem(s) {
 function openSong(id) {
   const s = songs.find(x => x.id === id);
   if (!s) return;
-  const lines = Array.isArray(s.lyric_lines) ? s.lyric_lines : [];
+  const manualDetailLines = parseManualAnalysis(s.manual_analysis || "");
+  const lines = manualDetailLines.length
+    ? manualDetailLines
+    : Array.isArray(s.lyric_lines) ? s.lyric_lines.map((line, i) => normalizeAIAnalysisLine(line, i)) : [];
   const youtubeThumb = getYoutubeThumbnail(s.youtube_url);
   const spotifyUrl = s.spotify_url || makeSpotifySearchUrl(s.title, s.artist_name);
   const lyricLinks = normalizeLyricsLinks(s.lyrics_links || makeLyricsSearchLinks(s.title, s.artist_name));
@@ -1123,11 +1126,11 @@ function parseManualAnalysis(text) {
   const raw = String(text || "").trim();
   if (!raw) return [];
 
-  const blocks = raw
-    .replace(/\r\n/g, "\n")
-    .split(/(?=【英文】)/g)
+  const normalized = raw.replace(/\r\n/g, "\n");
+  const blocks = normalized
+    .split(/(?=【(?:英文|英語|原文)】)/g)
     .map(b => b.trim())
-    .filter(Boolean);
+    .filter(b => /【(?:英文|英語|原文)】/.test(b));
 
   const lines = [];
   blocks.forEach((block, index) => {
@@ -1141,13 +1144,14 @@ function parseManualAnalysis(text) {
     const notes = parseBulletLines(grammarText).map(item => item.replace(/^・\s*/, "").trim()).filter(Boolean);
     const wordItems = parseManualWords(wordsText);
     const examples = parseBulletLines(examplesText).map(item => item.replace(/^・\s*/, "").trim()).filter(Boolean);
+    const fixedTranslation = cleanTranslation(translation, lyric) || translateLine(lyric);
 
     lines.push({
       line_no: index + 1,
       lyric,
-      translation: cleanTranslation(translation, lyric) || translateLine(lyric),
+      translation: fixedTranslation,
       grammar: {
-        translation: cleanTranslation(translation, lyric) || translateLine(lyric),
+        translation: fixedTranslation,
         points: notes.map(note => note.split(/[：:]/)[0].trim()).filter(Boolean),
         notes: notes.length ? notes : grammarNotesFromManualWords(wordItems, lyric),
         words: wordItems.length ? wordItems : vocabularyItems(lyric).slice(0, 6),
@@ -1161,15 +1165,40 @@ function parseManualAnalysis(text) {
   return lines;
 }
 
+function manualSectionAliases(label) {
+  const map = {
+    "英文": ["英文", "英語", "原文"],
+    "自然な和訳": ["自然な和訳", "和訳", "日本語訳", "自然な日本語訳"],
+    "文法ポイント": ["文法ポイント", "使われている文法", "文法", "文法解説"],
+    "単語の意味": ["単語の意味", "重要単語", "単語", "語彙"],
+    "例文": ["例文", "類似例文"]
+  };
+  return map[label] || [label];
+}
+
 function extractManualSection(block, label) {
-  const labels = ["英文", "自然な和訳", "文法ポイント", "単語の意味", "例文"];
-  const marker = `【${label}】`;
-  const start = block.indexOf(marker);
+  const allLabels = [
+    "英文", "英語", "原文",
+    "自然な和訳", "和訳", "日本語訳", "自然な日本語訳",
+    "文法ポイント", "使われている文法", "文法", "文法解説",
+    "単語の意味", "重要単語", "単語", "語彙",
+    "例文", "類似例文"
+  ];
+  const aliases = manualSectionAliases(label);
+  let start = -1;
+  let used = "";
+  for (const alias of aliases) {
+    const pos = block.indexOf(`【${alias}】`);
+    if (pos >= 0 && (start < 0 || pos < start)) {
+      start = pos;
+      used = alias;
+    }
+  }
   if (start < 0) return "";
-  const bodyStart = start + marker.length;
+  const bodyStart = start + `【${used}】`.length;
   let end = block.length;
-  labels.forEach(other => {
-    if (other === label) return;
+  allLabels.forEach(other => {
+    if (other === used) return;
     const pos = block.indexOf(`【${other}】`, bodyStart);
     if (pos >= 0 && pos < end) end = pos;
   });
@@ -1751,13 +1780,21 @@ async function refreshSongAnalysis(id) {
 
   toast("分析レビューを更新中です...");
   let lines = [];
+  let usedManual = false;
   let usedAI = true;
-  try {
-    lines = await analyzeLyricsWithAI(raw, song.title || "", song.artist_name || "");
-  } catch (error) {
+  const manualLines = parseManualAnalysis(song.manual_analysis || "");
+  if (manualLines.length) {
+    lines = manualLines;
+    usedManual = true;
     usedAI = false;
-    console.warn("AI analysis refresh failed. Fallback analysis will be saved.", error);
-    lines = splitLyricsLines(raw).map((line, i) => refreshLineAnalysis({ lyric: line, line_no: i + 1 }, i)).filter(l => l.lyric);
+  } else {
+    try {
+      lines = await analyzeLyricsWithAI(raw, song.title || "", song.artist_name || "");
+    } catch (error) {
+      usedAI = false;
+      console.warn("AI analysis refresh failed. Fallback analysis will be saved.", error);
+      lines = splitLyricsLines(raw).map((line, i) => refreshLineAnalysis({ lyric: line, line_no: i + 1 }, i)).filter(l => l.lyric);
+    }
   }
 
   const payload = {
@@ -1779,7 +1816,7 @@ async function refreshSongAnalysis(id) {
   renderSongs();
   const updated = songs.find(x => x.id === id);
   if (updated) openSong(id);
-  toast(usedAI ? "分析レビューを更新しました" : "AI解析に失敗したため、簡易解析で分析レビューを更新しました");
+  toast(usedManual ? "ChatGPT手動解析を分析レビューに反映しました" : usedAI ? "分析レビューを更新しました" : "AI解析に失敗したため、簡易解析で分析レビューを更新しました");
 }
 
 async function refreshSongMetadata(id) {
