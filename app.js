@@ -17,11 +17,11 @@ let currentUtterance = null;
 let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
-const APP_PATCH_VERSION = "v25-manual-analysis-priority";
+const APP_PATCH_VERSION = "v29-word-data-format";
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
 const COMMON_PASSWORD = "12345";
-const STOP_WORDS = new Set(["the", "a", "an", "is", "are", "am", "was", "were", "be", "been", "being", "to", "of", "in", "on", "at", "for", "and", "but", "or", "i", "you", "he", "she", "it", "we", "they", "me", "my", "your", "his", "her", "our", "their", "this", "that", "these", "those", "with", "from", "by", "as", "do", "does", "did", "not", "no", "so", "if", "then", "than", "too", "very", "just", "can", "could", "will", "would", "should", "must", "may", "might", "isnt", "dont", "cant", "wont"]);
+const STOP_WORDS = new Set(["the", "a", "an", "is", "are", "am", "was", "were", "be", "been", "being", "to", "of", "in", "on", "at", "for", "and", "but", "or", "i", "you", "he", "she", "it", "we", "they", "me", "my", "your", "his", "her", "our", "their", "this", "that", "these", "those", "with", "from", "by", "as", "do", "does", "did", "not", "no", "so", "if", "then", "than", "too", "very", "just", "can", "could", "will", "would", "should", "must", "may", "might", "isnt", "dont", "cant", "wont", "im", "ive", "id", "ill", "youre", "youd", "youll"]);
 
 const WORD_DICTIONARY = {
   lover: ["恋人", "名詞", "love から派生した単語。歌詞では恋愛相手を表します。"],
@@ -45,7 +45,59 @@ const WORD_DICTIONARY = {
   in: ["中で・中に", "前置詞", "空間や状態の内側にいるイメージです。"],
   is: ["である・いる", "be動詞", "主語の状態や説明をつなぎます。"],
   isnt: ["ではない", "be動詞 + not", "is not の短縮形 isn't。否定文を作ります。"],
-  not: ["ではない", "副詞", "動詞や文全体を否定します。"]
+  not: ["ではない", "副詞", "動詞や文全体を否定します。"],
+  said: ["言った", "動詞", "say の過去形。誰かが発言した内容を表します。"],
+  say: ["言う", "動詞", "say + 内容で「〜と言う」。"],
+  like: ["〜のような・好き", "前置詞 / 動詞", "like + 名詞で「〜のような」、動詞なら「好き」。"],
+  open: ["開いた・広い", "形容詞 / 動詞", "open ocean では「広い海」のようなイメージです。"],
+  ocean: ["海・大洋", "名詞", "広さや深さの比喩として歌詞でよく使われます。"],
+  memories: ["思い出・記憶", "名詞", "memory の複数形。過去の記憶を表します。"],
+  memory: ["思い出・記憶", "名詞", "過去の出来事や覚えている内容を表します。"],
+  moment: ["瞬間・時", "名詞", "特定の短い時間や大切な場面を表します。"],
+  alone: ["ひとりで・孤独な", "副詞 / 形容詞", "feel alone で「孤独を感じる」。"],
+  broke: ["壊した・破った", "動詞", "break の過去形。promise を目的語にすると「約束を破る」。"],
+  promise: ["約束", "名詞 / 動詞", "make a promise で「約束する」。"],
+  ever: ["これまでに・一度でも", "副詞", "強調として使われることが多い単語です。"],
+  made: ["作った・した", "動詞", "make の過去形。make a promise で「約束する」。"],
+  lost: ["失った・迷った", "形容詞 / 動詞", "lost in ... で「〜の中で迷った・見失った」。"],
+  pain: ["痛み・苦しみ", "名詞", "身体的・感情的な苦しみの両方に使います。"],
+  away: ["離れて・遠くへ", "副詞", "take away で「取り去る」。"],
+  throw: ["投げる・放り込む", "動詞", "throw A to B で「AをBへ投げる」。"],
+  wolves: ["狼たち", "名詞", "wolf の複数形。危険な相手や群れの比喩にもなります。"],
+  tomorrow: ["明日", "名詞 / 副詞", "未来や戻ってくる時を表します。"],
+  come: ["来る", "動詞", "come back で「戻ってくる」。"],
+  back: ["戻って・後ろに", "副詞", "come back で「戻る」。"],
+  leader: ["リーダー・率いる人", "名詞", "leader of ... で「〜のリーダー」。"],
+  whole: ["全体の・まるごとの", "形容詞", "the whole pack で「群れ全体」。"],
+  pack: ["群れ・集団", "名詞", "wolves など動物の群れに使います。"],
+  beat: ["打つ・打ち負かす", "動詞", "beat me で「私を打つ・打ち負かす」。"],
+  black: ["黒い", "形容詞", "色や暗さのイメージを表します。"],
+  blue: ["青い・憂うつな", "形容詞", "feel blue で「落ち込む」。"],
+  wound: ["傷", "名詞", "心や体の傷を表します。"],
+  shape: ["形作る", "動詞", "経験が人を変える・形作るという意味で使います。"],
+  scar: ["傷跡", "名詞", "過去の痛みや経験の比喩として使います。"],
+  build: ["築く・作り上げる", "動詞", "build my throne で「自分の王座を築く」。"],
+  throne: ["王座", "名詞", "力・地位・自分の居場所の比喩として使われます。"],
+  sticks: ["棒・枝", "名詞", "sticks and stones は決まり文句として使われます。"],
+  stones: ["石", "名詞", "sticks and stones で「棒や石」。攻撃や批判の比喩にもなります。"],
+  river: ["川", "名詞", "涙や流れの比喩として歌詞で使われます。"],
+  forgive: ["許す", "動詞", "forgive + 人で「人を許す」。"],
+  reason: ["理由", "名詞", "the reason で「その理由」。"],
+  still: ["まだ・それでも", "副詞", "継続や逆境の中でも続く感じを表します。"],
+  fight: ["戦う", "動詞 / 名詞", "困難に立ち向かう意味でも使います。"],
+  remember: ["覚えている・思い出す", "動詞", "remember + 名詞 / remember that... で「〜を覚えている」。"],
+  left: ["去った・残された", "動詞 / 形容詞", "leave の過去形。you left me alone で「君が僕をひとりにした」。"],
+  hurt: ["傷つける・痛む", "動詞", "hurt me で「私を傷つける」。"],
+  break: ["壊す・破る", "動詞", "break a promise で「約束を破る」。"],
+  broken: ["壊れた・破られた", "形容詞", "broken promise で「破られた約束」。"],
+  swim: ["泳ぐ", "動詞", "swim in ... で「〜の中を泳ぐ」。比喩にも使います。"],
+  thrown: ["投げ込まれた", "過去分詞", "throw の過去分詞。be thrown in で「投げ込まれる」。"],
+  infinity: ["無限・永遠", "名詞", "to infinity で「無限へ・果てしなく」。"],
+  erase: ["消す・消し去る", "動詞", "erase memories で「記憶を消す」。"],
+  only: ["ただ〜だけ", "副詞", "only memories で「思い出だけ」。"],
+  memories: ["思い出・記憶", "名詞", "memory の複数形。過去の記憶を表します。"],
+  ocean: ["海・大洋", "名詞", "広さや深さの比喩として歌詞でよく使われます。"],
+  storm: ["嵐・困難", "名詞", "感情の荒れや困難の比喩として使われます。"],
 };
 
 const WORD_USAGE = {
@@ -79,8 +131,8 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v26-word-speech-035";
-  console.log("Lyrics English v25-manual-analysis-priority loaded");
+  window.LYRICS_ENGLISH_VERSION = "v29-word-data-format";
+  console.log("Lyrics English v29-word-data-format loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
@@ -417,15 +469,47 @@ function renderArtistInfo(info) {
     </div>`;
 }
 
+
+function mergeLineWords(lyric, manualWords = []) {
+  const map = new Map();
+
+  (Array.isArray(manualWords) ? manualWords : []).forEach(item => {
+    const word = normalizeWord(item?.word || "");
+    if (!word || STOP_WORDS.has(word)) return;
+    map.set(word, {
+      word,
+      meaning: item.meaning || getWordInfo(word).meaning,
+      usage: item.usage || getWordUsage(word).usage,
+      example: item.example || getWordUsage(word).example,
+      example_ja: item.example_ja || item.ja || getWordUsage(word).ja
+    });
+  });
+
+  getWords(lyric).map(normalizeWord).filter(w => w && w.length >= 3 && !STOP_WORDS.has(w)).forEach(word => {
+    if (map.has(word)) return;
+    const info = getWordInfo(word);
+    const usage = getWordUsage(word);
+    map.set(word, {
+      word,
+      meaning: info.meaning,
+      usage: usage.usage || info.memo || "",
+      example: usage.example || "",
+      example_ja: usage.ja || ""
+    });
+  });
+
+  return [...map.values()].filter(w => w.word && w.meaning);
+}
+
 function lineHtml(line, songId, songTitle, artistName) {
   const lyric = String(line?.lyric || "").trim();
   const g = normalizeAnalysisLine(line);
   const translation = g.translation || translateLine(lyric);
   const notes = (g.notes && g.notes.length ? g.notes : grammarNotes(lyric, g.points || [])).slice(0, 5);
-  const words = (g.words && g.words.length ? g.words : vocabularyItems(lyric)).slice(0, 8);
+  const words = mergeLineWords(lyric, g.words).slice(0, 10);
   const examples = (g.examples && g.examples.length ? g.examples : similarExamples(lyric)).slice(0, 3);
   return `<div class="lyrics-line">
-    <div class="en">${wordify(lyric, songId, line.line_no, songTitle, artistName)}</div>
+    <div class="en">${wordify(lyric, songId, line.line_no, songTitle, artistName, words)}</div>
     <div class="jp"><b>自然な和訳：</b>${esc(translation)}</div>
     <div class="mini compact-analysis">
       <b>文法ポイント（要約）</b>
@@ -449,11 +533,13 @@ function lineHtml(line, songId, songTitle, artistName) {
   </div>`;
 }
 
-function wordify(text, songId, lineNo, songTitle, artistName) {
+function wordify(text, songId, lineNo, songTitle, artistName, wordItems = []) {
+  const wordMap = new Map((wordItems || []).map(item => [normalizeWord(item.word || ""), item]));
   return tokenizePreservingSpace(text).map(part => {
     if (/^[A-Za-z][A-Za-z'’]*$/.test(part)) {
       const clean = normalizeWord(part);
-      return `<span class="word" tabindex="0" data-word="${escAttr(clean)}" data-song-id="${escAttr(songId)}" data-line-no="${lineNo}" data-song-title="${escAttr(songTitle || "")}" data-artist-name="${escAttr(artistName || "")}">${esc(part)}</span>`;
+      const item = wordMap.get(clean) || {};
+      return `<span class="word" tabindex="0" data-word="${escAttr(clean)}" data-song-id="${escAttr(songId)}" data-line-no="${lineNo}" data-song-title="${escAttr(songTitle || "")}" data-artist-name="${escAttr(artistName || "")}" data-meaning="${escAttr(item.meaning || "")}" data-usage="${escAttr(item.usage || "")}" data-example="${escAttr(item.example || "")}" data-example-ja="${escAttr(item.example_ja || item.ja || "")}">${esc(part)}</span>`;
     }
     return esc(part);
   }).join("");
@@ -903,7 +989,7 @@ function buildChatGPTPrompt(title, artist, lyrics) {
 目的：
 ・自然な日本語訳を作る
 ・使われている文法を短く説明する
-・重要単語の意味、使い方、例文を出す
+・各英文ごとに重要単語を3〜6個選び、意味、使い方、例文を必ず出す
 ・初心者にもわかるようにする
 ・説明は長すぎず、アプリに表示しやすい形にする
 
@@ -936,6 +1022,13 @@ ${lyrics || "未入力"}
 　例文：英語例文
 　訳：日本語訳
 
+【単語データ】
+word: 単語
+meaning: 日本語の意味
+usage: よく使う形・文法的な使い方
+example: 英語例文
+example_ja: 例文の日本語訳
+
 【例文】
 ・英語例文 / 日本語訳
 
@@ -944,6 +1037,9 @@ ${lyrics || "未入力"}
 ・主語、動詞、目的語のような説明は必要な場合だけにしてください
 ・不定詞、動名詞、現在分詞、前置詞、熟語など、実際に使われている文法を優先してください
 ・直訳ではなく、歌詞として自然な日本語にしてください
+・【単語の意味】は必ず「・単語：意味」「使い方：」「例文：」「訳：」の形で書いてください
+・【単語データ】は必ず word / meaning / usage / example / example_ja の5項目で書いてください
+・アプリは【単語データ】を優先して読み取るため、単語ごとに必ず1セットずつ出してください
 ・出力はそのままアプリに貼れるように、見やすく整理してください`;
 }
 
@@ -1138,7 +1234,7 @@ function parseManualAnalysis(text) {
     if (!lyric) return;
     const translation = extractManualSection(block, "自然な和訳").split(/\n/).map(x => x.trim()).filter(Boolean)[0] || "";
     const grammarText = extractManualSection(block, "文法ポイント");
-    const wordsText = extractManualSection(block, "単語の意味");
+    const wordsText = extractManualSection(block, "単語データ") || extractManualSection(block, "単語の意味") || extractLikelyWordLines(block);
     const examplesText = extractManualSection(block, "例文");
 
     const notes = parseBulletLines(grammarText).map(item => item.replace(/^・\s*/, "").trim()).filter(Boolean);
@@ -1171,6 +1267,7 @@ function manualSectionAliases(label) {
     "自然な和訳": ["自然な和訳", "和訳", "日本語訳", "自然な日本語訳"],
     "文法ポイント": ["文法ポイント", "使われている文法", "文法", "文法解説"],
     "単語の意味": ["単語の意味", "重要単語", "単語", "語彙"],
+    "単語データ": ["単語データ", "word data", "vocabulary data"],
     "例文": ["例文", "類似例文"]
   };
   return map[label] || [label];
@@ -1181,7 +1278,7 @@ function extractManualSection(block, label) {
     "英文", "英語", "原文",
     "自然な和訳", "和訳", "日本語訳", "自然な日本語訳",
     "文法ポイント", "使われている文法", "文法", "文法解説",
-    "単語の意味", "重要単語", "単語", "語彙",
+    "単語の意味", "重要単語", "単語", "語彙", "単語データ", "word data", "vocabulary data",
     "例文", "類似例文"
   ];
   const aliases = manualSectionAliases(label);
@@ -1213,6 +1310,15 @@ function parseBulletLines(text) {
     .filter(line => !/^使い方[:：]|^例文[:：]|^訳[:：]/.test(line));
 }
 
+
+function extractLikelyWordLines(block) {
+  return String(block || "")
+    .split(/\n+/)
+    .map(line => line.trim())
+    .filter(line => /^[-・*]?\s*[A-Za-z][A-Za-z'’\-]*\s*[：:\-–—]\s*[^A-Za-z]+/.test(line))
+    .join("\n");
+}
+
 function parseManualWords(text) {
   const rows = String(text || "")
     .replace(/\r\n/g, "\n")
@@ -1223,6 +1329,16 @@ function parseManualWords(text) {
   const words = [];
   let current = null;
 
+  function pushCurrent() {
+    if (!current) return;
+    current.word = normalizeWord(current.word || "");
+    current.meaning = String(current.meaning || "").trim();
+    current.usage = String(current.usage || "").trim();
+    current.example = String(current.example || "").trim();
+    current.example_ja = String(current.example_ja || current.ja || "").trim();
+    if (current.word && current.meaning) words.push(current);
+  }
+
   rows.forEach(row => {
     const cleaned = row
       .replace(/^[-・*]\s*/, "")
@@ -1232,65 +1348,78 @@ function parseManualWords(text) {
 
     if (!cleaned) return;
 
-    const usage = /^(使い方|用法|usage)\s*[：:]\s*(.+)$/i.exec(cleaned);
-    if (usage && current) {
-      current.usage = usage[2].trim();
+    // 専用フォーマット: word / meaning / usage / example / example_ja
+    const kv = /^(word|単語|meaning|意味|usage|使い方|用法|example|例文|example_ja|訳|日本語訳|例文訳)\s*[：:]\s*(.+)$/i.exec(cleaned);
+    if (kv) {
+      const key = kv[1].toLowerCase();
+      const value = kv[2].trim();
+      if (key === "word" || key === "単語") {
+        pushCurrent();
+        current = { word: value, meaning: "", usage: "", example: "", example_ja: "" };
+        return;
+      }
+      if (!current) current = { word: "", meaning: "", usage: "", example: "", example_ja: "" };
+      if (key === "meaning" || key === "意味") current.meaning = value;
+      else if (key === "usage" || key === "使い方" || key === "用法") current.usage = value;
+      else if (key === "example" || key === "例文") current.example = value;
+      else if (key === "example_ja" || key === "訳" || key === "日本語訳" || key === "例文訳") current.example_ja = value;
       return;
     }
 
-    const example = /^(例文|example)\s*[：:]\s*(.+)$/i.exec(cleaned);
-    if (example && current) {
-      current.example = example[2].trim();
-      return;
-    }
-
-    const ja = /^(訳|日本語訳|例文訳|translation)\s*[：:]\s*(.+)$/i.exec(cleaned);
-    if (ja && current) {
-      current.example_ja = ja[2].trim();
-      return;
-    }
-
+    // 既存フォーマット: tired：疲れた
     const colon = /^([A-Za-z][A-Za-z'’\-]*)\s*[：:]\s*(.+)$/.exec(cleaned);
     if (colon) {
+      pushCurrent();
       current = {
-        word: normalizeWord(colon[1]),
+        word: colon[1],
         meaning: colon[2].trim(),
         usage: "",
         example: "",
         example_ja: ""
       };
-      if (current.word) words.push(current);
       return;
     }
 
     const dash = /^([A-Za-z][A-Za-z'’\-]*)\s+[-–—]\s+(.+)$/.exec(cleaned);
     if (dash) {
+      pushCurrent();
       current = {
-        word: normalizeWord(dash[1]),
+        word: dash[1],
         meaning: dash[2].trim(),
         usage: "",
         example: "",
         example_ja: ""
       };
-      if (current.word) words.push(current);
       return;
     }
 
-    // 「tired 疲れた、うんざりした」のようなコロンなし表記にも対応
     const space = /^([A-Za-z][A-Za-z'’\-]*)\s+([^A-Za-z].+)$/.exec(cleaned);
     if (space && !/^(I|You|He|She|It|We|They)$/i.test(space[1])) {
+      pushCurrent();
       current = {
-        word: normalizeWord(space[1]),
+        word: space[1],
         meaning: space[2].trim(),
         usage: "",
         example: "",
         example_ja: ""
       };
-      if (current.word) words.push(current);
+      return;
     }
+
+    // 直前の単語に対する補足行として扱う
+    if (current && !current.usage && /使/.test(cleaned)) current.usage = cleaned;
   });
 
-  return words.filter(w => w.word && w.meaning);
+  pushCurrent();
+
+  const seen = new Set();
+  return words
+    .map(w => ({ ...w, word: normalizeWord(w.word) }))
+    .filter(w => {
+      if (!w.word || !w.meaning || STOP_WORDS.has(w.word) || seen.has(w.word)) return false;
+      seen.add(w.word);
+      return true;
+    });
 }
 
 function grammarNotesFromManualWords(words, lyric) {
@@ -1942,11 +2071,15 @@ function showWordTooltip(el, word) {
   if (!tip) return;
   const info = getWordInfo(word);
   const usage = getWordUsage(word);
+  const meaning = el?.dataset?.meaning || info.meaning;
+  const usageText = el?.dataset?.usage || usage.usage;
+  const example = el?.dataset?.example || usage.example;
+  const exampleJa = el?.dataset?.exampleJa || usage.ja;
   tip.innerHTML = `
     <div class="tip-title">${esc(word)}</div>
-    <div class="tip-section"><b>意味：</b><br>${esc(info.meaning)}</div>
-    <div class="tip-section"><b>使い方：</b><br>${esc(usage.usage)}<br>${esc(usage.meaning || "")}</div>
-    <div class="tip-section"><b>例文：</b><br>${esc(usage.example)}<br>${esc(usage.ja)}</div>
+    <div class="tip-section"><b>意味：</b><br>${esc(meaning || "意味を確認してください")}</div>
+    <div class="tip-section"><b>使い方：</b><br>${esc(usageText || "文脈の中で使い方を確認します。")}</div>
+    <div class="tip-section"><b>例文：</b><br>${esc(example || `Check the word "${normalizeWord(word)}" in context.`)}<br>${esc(exampleJa || `「${normalizeWord(word)}」を文脈の中で確認しましょう。`)}</div>
   `;
   tip.style.display = "block";
   const rect = el.getBoundingClientRect();
