@@ -17,7 +17,7 @@ let currentUtterance = null;
 let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
-const APP_PATCH_VERSION = "v30-translation-selective-vocab";
+const APP_PATCH_VERSION = "v31-manual-analysis-reflect-stable";
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
 const COMMON_PASSWORD = "12345";
@@ -138,8 +138,8 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v29-word-data-format";
-  console.log("Lyrics English v29-word-data-format loaded");
+  window.LYRICS_ENGLISH_VERSION = "v31-manual-analysis-reflect-stable";
+  console.log("Lyrics English v31-manual-analysis-reflect-stable loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
@@ -2288,5 +2288,191 @@ function esc(s) { return String(s ?? "").replace(/[&<>"']/g, m => ({ "&": "&amp;
 function nl(s) { return esc(s).replace(/\n/g, "<br>"); }
 function escAttr(s) { return esc(s).replace(/\n/g, " "); }
 function fmt(s) { return s ? new Date(s).toLocaleString() : ""; }
+
+
+// v31: ChatGPT手動解析を詳細表示・保存データへ安定反映するための上書き関数。
+// 既存機能は触らず、手動解析テキストの読み取りだけを強化する。
+function parseManualAnalysis(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return [];
+
+  const normalized = raw.replace(/\r\n/g, "\n");
+  const globalWords = parseManualWords(
+    extractManualSectionFromText(normalized, ["単語データ", "word data", "vocabulary data"]) ||
+    extractManualSectionFromText(normalized, ["単語の意味", "重要単語", "単語", "語彙"])
+  );
+  const globalExamples = parseBulletLines(
+    extractManualSectionFromText(normalized, ["例文", "類似例文"])
+  ).map(x => x.replace(/^・\s*/, "").trim()).filter(Boolean);
+
+  const blocks = normalized
+    .split(/(?=【(?:英文|英語|原文)】)/g)
+    .map(b => b.trim())
+    .filter(b => /【(?:英文|英語|原文)】/.test(b));
+
+  let lines = [];
+
+  if (blocks.length) {
+    blocks.forEach((block, index) => {
+      const lyric = firstMeaningfulLine(extractManualSectionFromText(block, ["英文", "英語", "原文"]));
+      if (!lyric) return;
+      const translation = firstMeaningfulLine(extractManualSectionFromText(block, ["自然な和訳", "和訳", "日本語訳", "自然な日本語訳"]));
+      const grammarText = extractManualSectionFromText(block, ["文法ポイント", "使われている文法", "文法", "文法解説"]);
+      const localWordsText = extractManualSectionFromText(block, ["単語データ", "word data", "vocabulary data"]) ||
+        extractManualSectionFromText(block, ["単語の意味", "重要単語", "単語", "語彙"]);
+      const localWords = parseManualWords(localWordsText);
+      const wordItems = localWords.length ? localWords : wordsForLyricFromManual(lyric, globalWords);
+      const notes = parseBulletLines(grammarText).map(item => item.replace(/^・\s*/, "").trim()).filter(Boolean);
+      const examples = parseBulletLines(extractManualSectionFromText(block, ["例文", "類似例文"]))
+        .map(item => item.replace(/^・\s*/, "").trim())
+        .filter(Boolean);
+      lines.push(buildManualLine(index + 1, lyric, translation, notes, wordItems, examples.length ? examples : examplesForLyricFromManual(lyric, globalExamples)));
+    });
+  }
+
+  // ChatGPTの回答が「【英文】」ブロックで分かれていない場合の保険。
+  // 歌詞欄の行と、回答内の和訳欄を上から順番に対応させる。
+  if (!lines.length) {
+    const lyrics = getCurrentLyricsLinesForManualParse();
+    const translations = extractRepeatedSectionValues(normalized, ["自然な和訳", "和訳", "日本語訳", "自然な日本語訳"]);
+    const grammarValues = extractRepeatedSectionValues(normalized, ["文法ポイント", "使われている文法", "文法", "文法解説"]);
+    if (lyrics.length) {
+      lines = lyrics.map((lyric, index) => {
+        const wordItems = wordsForLyricFromManual(lyric, globalWords);
+        const notes = grammarValues[index] ? parseBulletLines(grammarValues[index]).map(x => x.replace(/^・\s*/, "").trim()).filter(Boolean) : [];
+        return buildManualLine(index + 1, lyric, translations[index] || "", notes, wordItems, examplesForLyricFromManual(lyric, globalExamples));
+      });
+    }
+  }
+
+  // 単語データが全体末尾にだけある場合、各行へ該当単語を補完する。
+  return lines.map((line, index) => {
+    const lyric = String(line.lyric || "");
+    const currentWords = Array.isArray(line.grammar?.words) ? line.grammar.words : [];
+    const mergedWords = mergeManualWordLists(currentWords, wordsForLyricFromManual(lyric, globalWords));
+    return buildManualLine(
+      Number(line.line_no) || index + 1,
+      lyric,
+      line.translation,
+      Array.isArray(line.grammar?.notes) ? line.grammar.notes : [],
+      mergedWords,
+      Array.isArray(line.grammar?.examples) ? line.grammar.examples : []
+    );
+  }).filter(l => l.lyric);
+}
+
+function buildManualLine(lineNo, lyric, translation, notes, words, examples) {
+  const fixedTranslation = cleanTranslation(translation, lyric) || translateLine(lyric);
+  const wordItems = Array.isArray(words) && words.length ? words : vocabularyItems(lyric).slice(0, 6);
+  const grammarNotesValue = Array.isArray(notes) && notes.length ? notes : grammarNotesFromManualWords(wordItems, lyric);
+  const examplesValue = Array.isArray(examples) && examples.length ? examples : similarExamples(lyric);
+  return {
+    line_no: lineNo,
+    lyric,
+    translation: fixedTranslation,
+    grammar: {
+      translation: fixedTranslation,
+      points: grammarNotesValue.map(note => String(note).split(/[：:]/)[0].trim()).filter(Boolean),
+      notes: grammarNotesValue,
+      words: wordItems,
+      examples: examplesValue
+    },
+    vocabulary: wordItems.map(w => `・${w.word}: ${w.meaning}`).join("\n"),
+    preposition: "ChatGPT手動解析"
+  };
+}
+
+function extractManualSectionFromText(text, labels) {
+  const source = String(text || "");
+  const all = [
+    "英文", "英語", "原文",
+    "自然な和訳", "和訳", "日本語訳", "自然な日本語訳",
+    "文法ポイント", "使われている文法", "文法", "文法解説",
+    "単語の意味", "重要単語", "単語", "語彙", "単語データ", "word data", "vocabulary data",
+    "例文", "類似例文"
+  ];
+  let start = -1;
+  let used = "";
+  for (const label of labels) {
+    const re = new RegExp(`【${escapeRegExp(label)}】`, "i");
+    const match = re.exec(source);
+    if (match && (start < 0 || match.index < start)) {
+      start = match.index;
+      used = match[0];
+    }
+  }
+  if (start < 0) return "";
+  const bodyStart = start + used.length;
+  let end = source.length;
+  for (const other of all) {
+    const re = new RegExp(`【${escapeRegExp(other)}】`, "ig");
+    let m;
+    while ((m = re.exec(source))) {
+      if (m.index > bodyStart && m.index < end) end = m.index;
+    }
+  }
+  return source.slice(bodyStart, end).trim();
+}
+
+function extractRepeatedSectionValues(text, labels) {
+  const source = String(text || "");
+  const values = [];
+  for (const label of labels) {
+    const re = new RegExp(`【${escapeRegExp(label)}】([\\s\\S]*?)(?=【(?:英文|英語|原文|自然な和訳|和訳|日本語訳|自然な日本語訳|文法ポイント|使われている文法|文法|文法解説|単語の意味|重要単語|単語|語彙|単語データ|word data|vocabulary data|例文|類似例文)】|$)`, "gi");
+    let m;
+    while ((m = re.exec(source))) {
+      const value = String(m[1] || "").trim();
+      if (value) values.push(value);
+    }
+    if (values.length) break;
+  }
+  return values;
+}
+
+function firstMeaningfulLine(text) {
+  return String(text || "")
+    .split(/\n+/)
+    .map(x => x.replace(/^[-・*]\s*/, "").trim())
+    .filter(Boolean)[0] || "";
+}
+
+function getCurrentLyricsLinesForManualParse() {
+  const raw = (typeof qs === "function" && qs("#lyricsRaw")) ? qs("#lyricsRaw").value : "";
+  return splitLyricsLines(normalizeLyricsText(raw || "")).map(x => x.trim()).filter(Boolean);
+}
+
+function wordsForLyricFromManual(lyric, words) {
+  const set = new Set(getWords(lyric).map(normalizeWord));
+  return (words || []).filter(w => set.has(normalizeWord(w.word)) && isLearningVocabularyWord(normalizeWord(w.word)));
+}
+
+function examplesForLyricFromManual(lyric, examples) {
+  const keyWords = new Set(getWords(lyric).map(normalizeWord).filter(w => w.length > 3));
+  return (examples || []).filter(ex => getWords(ex).some(w => keyWords.has(normalizeWord(w)))).slice(0, 3);
+}
+
+function mergeManualWordLists(a, b) {
+  const map = new Map();
+  [...(a || []), ...(b || [])].forEach(item => {
+    const word = normalizeWord(item.word || "");
+    if (!word || !isLearningVocabularyWord(word)) return;
+    if (!map.has(word)) map.set(word, { ...item, word });
+    else {
+      const existing = map.get(word);
+      map.set(word, {
+        ...existing,
+        meaning: existing.meaning || item.meaning || "",
+        usage: existing.usage || item.usage || "",
+        example: existing.example || item.example || "",
+        example_ja: existing.example_ja || item.example_ja || item.ja || ""
+      });
+    }
+  });
+  return [...map.values()].filter(w => w.word && w.meaning);
+}
+
+function escapeRegExp(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 })();
