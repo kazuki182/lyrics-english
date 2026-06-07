@@ -17,11 +17,18 @@ let currentUtterance = null;
 let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
-const APP_PATCH_VERSION = "v29-word-data-format";
+const APP_PATCH_VERSION = "v30-translation-selective-vocab";
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
 const COMMON_PASSWORD = "12345";
 const STOP_WORDS = new Set(["the", "a", "an", "is", "are", "am", "was", "were", "be", "been", "being", "to", "of", "in", "on", "at", "for", "and", "but", "or", "i", "you", "he", "she", "it", "we", "they", "me", "my", "your", "his", "her", "our", "their", "this", "that", "these", "those", "with", "from", "by", "as", "do", "does", "did", "not", "no", "so", "if", "then", "than", "too", "very", "just", "can", "could", "will", "would", "should", "must", "may", "might", "isnt", "dont", "cant", "wont", "im", "ive", "id", "ill", "youre", "youd", "youll"]);
+const LEARNING_WORDS = new Set([
+  // 英検準2級以上を目安に、歌詞学習で優先したい単語だけを表示・登録対象にします。
+  "ocean", "promise", "pain", "wolves", "throne", "scar", "wound", "shape", "build", "broke", "broken", "forgive", "reason", "fight",
+  "remember", "memory", "memories", "moment", "alone", "hurt", "break", "swim", "thrown", "infinity", "erase", "storm",
+  "leader", "whole", "pack", "beat", "sticks", "stones", "river", "lost", "open", "dark", "lover", "dancing"
+]);
+
 
 const WORD_DICTIONARY = {
   lover: ["恋人", "名詞", "love から派生した単語。歌詞では恋愛相手を表します。"],
@@ -485,20 +492,28 @@ function mergeLineWords(lyric, manualWords = []) {
     });
   });
 
-  getWords(lyric).map(normalizeWord).filter(w => w && w.length >= 3 && !STOP_WORDS.has(w)).forEach(word => {
-    if (map.has(word)) return;
-    const info = getWordInfo(word);
-    const usage = getWordUsage(word);
-    map.set(word, {
-      word,
-      meaning: info.meaning,
-      usage: usage.usage || info.memo || "",
-      example: usage.example || "",
-      example_ja: usage.ja || ""
+  getWords(lyric)
+    .map(normalizeWord)
+    .filter(w => w && w.length >= 3 && !STOP_WORDS.has(w) && isLearningVocabularyWord(w))
+    .forEach(word => {
+      if (map.has(word)) return;
+      const info = getWordInfo(word);
+      const usage = getWordUsage(word);
+      map.set(word, {
+        word,
+        meaning: info.meaning,
+        usage: usage.usage || info.memo || "",
+        example: usage.example || "",
+        example_ja: usage.ja || ""
+      });
     });
-  });
 
-  return [...map.values()].filter(w => w.word && w.meaning);
+  return [...map.values()].filter(w => w.word && w.meaning && isLearningVocabularyWord(w.word));
+}
+
+function isLearningVocabularyWord(word) {
+  const key = normalizeWord(word).replace(/'/g, "");
+  return LEARNING_WORDS.has(key);
 }
 
 function lineHtml(line, songId, songTitle, artistName) {
@@ -518,7 +533,7 @@ function lineHtml(line, songId, songTitle, artistName) {
       </ul>
       <b>単語の意味</b>
       <ul class="grammar-list">
-        ${(words.length ? words : [{ word: "重要単語", meaning: "少なめです" }]).map(w => `<li><b>${esc(w.word)}</b>: ${esc(w.meaning || "意味を確認してください")}${w.usage ? ` / ${esc(w.usage)}` : ""}</li>`).join("")}
+        ${(words.length ? words : [{ word: "重要単語", meaning: "英検準2級以上を目安にした重要単語は少なめです" }]).map(w => `<li><b>${esc(w.word)}</b>: ${esc(w.meaning || "意味を確認してください")}${w.usage ? ` / ${esc(w.usage)}` : ""}</li>`).join("")}
       </ul>
       <b>例文</b><br>${nl(formatExamples(examples))}
     </div>
@@ -539,6 +554,9 @@ function wordify(text, songId, lineNo, songTitle, artistName, wordItems = []) {
     if (/^[A-Za-z][A-Za-z'’]*$/.test(part)) {
       const clean = normalizeWord(part);
       const item = wordMap.get(clean) || {};
+      if (!isLearningVocabularyWord(clean)) {
+        return `<span class="word plain-word">${esc(part)}</span>`;
+      }
       return `<span class="word" tabindex="0" data-word="${escAttr(clean)}" data-song-id="${escAttr(songId)}" data-line-no="${lineNo}" data-song-title="${escAttr(songTitle || "")}" data-artist-name="${escAttr(artistName || "")}" data-meaning="${escAttr(item.meaning || "")}" data-usage="${escAttr(item.usage || "")}" data-example="${escAttr(item.example || "")}" data-example-ja="${escAttr(item.example_ja || item.ja || "")}">${esc(part)}</span>`;
     }
     return esc(part);
@@ -989,7 +1007,7 @@ function buildChatGPTPrompt(title, artist, lyrics) {
 目的：
 ・自然な日本語訳を作る
 ・使われている文法を短く説明する
-・各英文ごとに重要単語を3〜6個選び、意味、使い方、例文を必ず出す
+・各英文ごとに、英検準2級以上を目安に学習価値の高い重要単語だけを1〜5個選び、意味、使い方、例文を必ず出す
 ・初心者にもわかるようにする
 ・説明は長すぎず、アプリに表示しやすい形にする
 
@@ -1037,8 +1055,8 @@ example_ja: 例文の日本語訳
 ・主語、動詞、目的語のような説明は必要な場合だけにしてください
 ・不定詞、動名詞、現在分詞、前置詞、熟語など、実際に使われている文法を優先してください
 ・直訳ではなく、歌詞として自然な日本語にしてください
-・【単語の意味】は必ず「・単語：意味」「使い方：」「例文：」「訳：」の形で書いてください
-・【単語データ】は必ず word / meaning / usage / example / example_ja の5項目で書いてください
+・【単語の意味】は英検準2級以上を目安に、学習価値の高い単語だけを書いてください。the / you / said / like / I などの基本語は原則除外してください
+・【単語データ】は必ず word / meaning / usage / example / example_ja の5項目で書いてください。基本語ではなく、英検準2級以上を目安にした重要単語だけにしてください
 ・アプリは【単語データ】を優先して読み取るため、単語ごとに必ず1セットずつ出してください
 ・出力はそのままアプリに貼れるように、見やすく整理してください`;
 }
@@ -1416,7 +1434,7 @@ function parseManualWords(text) {
   return words
     .map(w => ({ ...w, word: normalizeWord(w.word) }))
     .filter(w => {
-      if (!w.word || !w.meaning || STOP_WORDS.has(w.word) || seen.has(w.word)) return false;
+      if (!w.word || !w.meaning || STOP_WORDS.has(w.word) || seen.has(w.word) || !isLearningVocabularyWord(w.word)) return false;
       seen.add(w.word);
       return true;
     });
@@ -1573,7 +1591,7 @@ function grammarHtml(g) {
 
       <b>単語の意味</b>
       <ul class="grammar-list">
-        ${(words.length ? words : [{ word: "重要単語", meaning: "少なめです" }]).map(w => `<li><b>${esc(w.word)}</b>: ${esc(w.meaning)}</li>`).join("")}
+        ${(words.length ? words : [{ word: "重要単語", meaning: "英検準2級以上を目安にした重要単語は少なめです" }]).map(w => `<li><b>${esc(w.word)}</b>: ${esc(w.meaning)}</li>`).join("")}
       </ul>
 
       <b>例文</b><br>${nl((g.examples || []).slice(0, 2).join("\n"))}
@@ -1606,7 +1624,10 @@ function translateLine(line) {
     "I found a love for me": "僕は自分にぴったりの愛を見つけた。",
     "We are dancing in the dark": "僕たちは暗闇の中で踊っている。",
     "I'm tired of being what you want me to be": "あなたが望むような自分でいることに、もう疲れた。",
-    "I am tired of being what you want me to be": "あなたが望むような自分でいることに、もう疲れた。"
+    "I am tired of being what you want me to be": "あなたが望むような自分でいることに、もう疲れた。",
+    "You said I'm like an open ocean": "君は、僕が広い海みたいだと言った。",
+    "You said I am like an open ocean": "君は、僕が広い海みたいだと言った。",
+    "You said I was like an open ocean": "君は、僕が広い海みたいだと言った。"
   };
   if (exact[normalized]) return exact[normalized];
 
@@ -1666,7 +1687,7 @@ function grammarNotes(line, points) {
 }
 
 function vocabularyItems(line) {
-  const words = [...new Set(getWords(line).map(normalizeWord).filter(w => w.length >= 3 && !STOP_WORDS.has(w)))].slice(0, 8);
+  const words = [...new Set(getWords(line).map(normalizeWord).filter(w => w.length >= 3 && !STOP_WORDS.has(w) && isLearningVocabularyWord(w)))].slice(0, 6);
   return words.map(word => ({ word, ...getWordInfo(word) }));
 }
 
@@ -1709,7 +1730,7 @@ function guessComplement(line) { const m = line.match(/\b(?:is|are|was|were|isn'
 function guessModifiers(line) { const matches = line.match(/\b(?:to\s+[a-zA-Z']+(?:\s+[a-zA-Z']+)?|in\s+the\s+[a-zA-Z']+|for\s+[a-zA-Z']+|with\s+[a-zA-Z']+)\b/gi); return matches ? matches.join(" / ") : ""; }
 
 function vocabularyText(line) {
-  const words = [...new Set(getWords(line).map(normalizeWord).filter(w => w.length >= 3 && !STOP_WORDS.has(w)))].slice(0, 8);
+  const words = [...new Set(getWords(line).map(normalizeWord).filter(w => w.length >= 3 && !STOP_WORDS.has(w) && isLearningVocabularyWord(w)))].slice(0, 6);
   return words.length ? words.map(w => {
     const info = getWordInfo(w);
     return `・${w}: ${info.meaning} / ${info.pos}`;
@@ -2113,7 +2134,7 @@ function getWordUsage(word) {
 function openWordModal(word, songId, lineNo, songTitle, artistName) {
   if (songId === "preview") { toast("保存後に単語を追加できます"); return; }
   const clean = normalizeWord(word);
-  if (STOP_WORDS.has(clean)) { toast("学習優先度が低い単語なので除外しています"); return; }
+  if (STOP_WORDS.has(clean) || !isLearningVocabularyWord(clean)) { toast("英検準2級以上を目安にした重要単語だけを単語帳に追加できます"); return; }
   const info = getWordInfo(clean);
   const song = songs.find(s => s.id === songId);
   const line = (song?.lyric_lines || []).find(l => Number(l.line_no) === Number(lineNo));
@@ -2135,7 +2156,7 @@ function closeWordModal() {
 
 function getWordInfo(word) {
   const key = normalizeWord(word).replace(/'/g, "");
-  const value = WORD_DICTIONARY[key] || WORD_DICTIONARY[normalizeWord(word)] || ["意味を確認してください", "品詞を確認してください", "この単語が歌詞の中でどう使われているかメモしてください。"];
+  const value = WORD_DICTIONARY[key] || WORD_DICTIONARY[normalizeWord(word)] || ["意味を確認してください", "品詞を確認してください", "英検準2級以上を目安にした重要単語として、文脈の中で意味を確認してください。"];
   return { meaning: value[0], pos: value[1], memo: value[2] };
 }
 
