@@ -79,7 +79,7 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v25-manual-analysis-priority";
+  window.LYRICS_ENGLISH_VERSION = "v26-word-speech-035";
   console.log("Lyrics English v25-manual-analysis-priority loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
@@ -354,9 +354,9 @@ function openSong(id) {
               <button class="btn red" data-action="speech-stop" type="button">停止</button>
               <button class="btn secondary" data-action="speech-rate" data-rate="1" data-text="${escAttr(lines.map(l => l.lyric).join(". "))}" type="button">1.0倍</button>
               <button class="btn secondary" data-action="speech-rate" data-rate="0.5" data-text="${escAttr(lines.map(l => l.lyric).join(". "))}" type="button">0.5倍</button>
-              <button class="btn secondary" data-action="speech-rate" data-rate="0.25" data-text="${escAttr(lines.map(l => l.lyric).join(". "))}" type="button">0.25倍</button>
+              <button class="btn secondary" data-action="speech-rate" data-rate="0.35" data-text="${escAttr(lines.map(l => l.lyric).join(". "))}" type="button">0.35倍</button>
             </div>
-            <p class="mini">英語が速い場合は0.5倍、かなりゆっくり確認したい場合は0.25倍を使ってください。</p>
+            <p class="mini">英語が速い場合は0.5倍、かなりゆっくり確認したい場合は0.35倍を使ってください。</p>
           </div>
         </div>
       </div>
@@ -443,7 +443,7 @@ function lineHtml(line, songId, songTitle, artistName) {
       <button class="btn secondary" data-action="speech-pause" type="button">一時停止 / 再開</button>
       <button class="btn red" data-action="speech-stop" type="button">停止</button>
       <button class="btn secondary" data-action="speech-rate" data-rate="0.5" data-text="${escAttr(lyric)}" type="button">0.5倍</button>
-      <button class="btn secondary" data-action="speech-rate" data-rate="0.25" data-text="${escAttr(lyric)}" type="button">0.25倍</button>
+      <button class="btn secondary" data-action="speech-rate" data-rate="0.35" data-text="${escAttr(lyric)}" type="button">0.35倍</button>
       <button class="btn green" type="button">単語をクリックして単語帳へ</button>
     </div>
   </div>`;
@@ -1214,15 +1214,47 @@ function parseBulletLines(text) {
 }
 
 function parseManualWords(text) {
-  const rows = String(text || "").split(/\n+/).map(line => line.trim()).filter(Boolean);
+  const rows = String(text || "")
+    .replace(/\r\n/g, "\n")
+    .split(/\n+/)
+    .map(line => line.trim())
+    .filter(Boolean);
+
   const words = [];
   let current = null;
+
   rows.forEach(row => {
-    const main = row.match(/^・?\s*([^：:]+)[：:]\s*(.+)$/);
-    if (main && !/^(使い方|例文|訳)$/.test(main[1].trim())) {
+    const cleaned = row
+      .replace(/^[-・*]\s*/, "")
+      .replace(/^【.+?】\s*/, "")
+      .replace(/^\d+[.)、]\s*/, "")
+      .trim();
+
+    if (!cleaned) return;
+
+    const usage = /^(使い方|用法|usage)\s*[：:]\s*(.+)$/i.exec(cleaned);
+    if (usage && current) {
+      current.usage = usage[2].trim();
+      return;
+    }
+
+    const example = /^(例文|example)\s*[：:]\s*(.+)$/i.exec(cleaned);
+    if (example && current) {
+      current.example = example[2].trim();
+      return;
+    }
+
+    const ja = /^(訳|日本語訳|例文訳|translation)\s*[：:]\s*(.+)$/i.exec(cleaned);
+    if (ja && current) {
+      current.example_ja = ja[2].trim();
+      return;
+    }
+
+    const colon = /^([A-Za-z][A-Za-z'’\-]*)\s*[：:]\s*(.+)$/.exec(cleaned);
+    if (colon) {
       current = {
-        word: normalizeWord(main[1].trim()),
-        meaning: main[2].trim(),
+        word: normalizeWord(colon[1]),
+        meaning: colon[2].trim(),
         usage: "",
         example: "",
         example_ja: ""
@@ -1230,15 +1262,35 @@ function parseManualWords(text) {
       if (current.word) words.push(current);
       return;
     }
-    if (!current) return;
-    const usage = row.match(/^使い方[：:]\s*(.+)$/);
-    if (usage) { current.usage = usage[1].trim(); return; }
-    const example = row.match(/^例文[：:]\s*(.+)$/);
-    if (example) { current.example = example[1].trim(); return; }
-    const ja = row.match(/^訳[：:]\s*(.+)$/);
-    if (ja) { current.example_ja = ja[1].trim(); }
+
+    const dash = /^([A-Za-z][A-Za-z'’\-]*)\s+[-–—]\s+(.+)$/.exec(cleaned);
+    if (dash) {
+      current = {
+        word: normalizeWord(dash[1]),
+        meaning: dash[2].trim(),
+        usage: "",
+        example: "",
+        example_ja: ""
+      };
+      if (current.word) words.push(current);
+      return;
+    }
+
+    // 「tired 疲れた、うんざりした」のようなコロンなし表記にも対応
+    const space = /^([A-Za-z][A-Za-z'’\-]*)\s+([^A-Za-z].+)$/.exec(cleaned);
+    if (space && !/^(I|You|He|She|It|We|They)$/i.test(space[1])) {
+      current = {
+        word: normalizeWord(space[1]),
+        meaning: space[2].trim(),
+        usage: "",
+        example: "",
+        example_ja: ""
+      };
+      if (current.word) words.push(current);
+    }
   });
-  return words.filter(w => w.word);
+
+  return words.filter(w => w.word && w.meaning);
 }
 
 function grammarNotesFromManualWords(words, lyric) {
@@ -2060,17 +2112,20 @@ function stopSpeech() {
 
 function setSpeechRate(rate, text = currentSpeechText) {
   currentSpeechRate = clampSpeechRate(rate);
-  const label = currentSpeechRate <= 0.3 ? "かなりゆっくり" : currentSpeechRate <= 0.6 ? "ゆっくり" : "標準";
-  if (text && (window.speechSynthesis.speaking || window.speechSynthesis.paused)) {
-    speakText(text, currentSpeechRate);
-  } else {
-    toast(`読み上げ速度を${label}にしました`);
+  const label = currentSpeechRate <= 0.4 ? "かなりゆっくり" : currentSpeechRate <= 0.6 ? "ゆっくり" : "標準";
+  const value = String(text || currentSpeechText || "").trim();
+
+  if (value) {
+    speakText(value, currentSpeechRate);
+    return;
   }
+
+  toast(`読み上げ速度を${label}にしました`);
 }
 
 function clampSpeechRate(rate) {
   const value = Number(rate) || 1;
-  return Math.max(0.25, Math.min(1.25, value));
+  return Math.max(0.35, Math.min(1.25, value));
 }
 
 function normalizeWord(word) { return String(word || "").replace(/[^A-Za-z']/g, "").toLowerCase(); }
