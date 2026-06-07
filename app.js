@@ -17,7 +17,7 @@ let currentUtterance = null;
 let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
-const APP_PATCH_VERSION = "v22-manual-analysis-reflect";
+const APP_PATCH_VERSION = "v24-stable-mobile-manual-analysis";
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
 const COMMON_PASSWORD = "12345";
@@ -79,8 +79,8 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v22-manual-analysis-reflect";
-  console.log("Lyrics English v22-manual-analysis-reflect loaded");
+  window.LYRICS_ENGLISH_VERSION = "v24-stable-mobile-manual-analysis";
+  console.log("Lyrics English v24-stable-mobile-manual-analysis loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
