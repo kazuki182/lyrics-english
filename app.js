@@ -30,7 +30,7 @@ const LEARNING_WORDS = new Set([
   "remember", "memory", "memories", "moment", "alone", "hurt", "break", "swim", "thrown", "infinity", "erase", "storm",
   "leader", "whole", "pack", "beat", "sticks", "stones", "river", "lost", "open", "dark", "lover", "dancing",
   "blackhole", "black", "hole", "architect", "architects", "modern", "misery", "mortal", "ashes", "surrender", "fragile", "hollow", "regret", "anxiety", "pretend",
-  // v44: 編集プレビューと詳細表示の解析ロジックを統一。manual_analysisから行別文法を再紐付け。
+  // v45: manual_analysisの【英文】ブロックから文法ポイントを詳細ページへ直接反映。
   "fear", "tears", "tear", "blood", "bleed", "breath", "breathe", "drown", "drowning", "sink", "sinking", "rise", "burn", "burning", "buried",
   "alive", "dead", "ghost", "shadow", "heaven", "hell", "soul", "heart", "mind", "dream", "nightmare", "silence", "scream", "whisper",
   "chaos", "enemy", "denial", "truth", "trust", "faith", "blame", "shame", "guilt", "numb", "escape", "fall", "fallen", "apart",
@@ -204,8 +204,8 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v44-preview-detail-grammar-sync";
-  console.log("Lyrics English v44-preview-detail-grammar-sync loaded");
+  window.LYRICS_ENGLISH_VERSION = "v45-manual-grammar-block-direct";
+  console.log("Lyrics English v45-manual-grammar-block-direct loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
@@ -452,7 +452,8 @@ function openSong(id) {
     ? manualDetailLines
     : storedLyricLines.map((line, i) => normalizeAIAnalysisLine(line, i));
   const songWordData = getSongWordData(s);
-  const lines = enrichLinesWithSongWordData(baseLines, songWordData);
+  const linesBeforeManualBlockFix = enrichLinesWithSongWordData(baseLines, songWordData);
+  const lines = applyManualAnalysisGrammarBlocks(linesBeforeManualBlockFix, s.manual_analysis || "");
   const analysisState = getAnalysisStateHtml(s, lines, displaySource);
   const youtubeThumb = getYoutubeThumbnail(s.youtube_url);
   const spotifyUrl = resolveSpotifyUrl(s);
@@ -3223,6 +3224,103 @@ function grammarNotes(line, points) {
 
 // v44: 詳細ページの行別文法を、編集プレビューと同じ manual_analysis から強制的に補完する。
 // 目的: Supabaseには文法が保存されているのに、詳細ページだけ「未取得」になる問題を防ぐ。
+
+// v45: 詳細ページ専用の最終補正。
+// Supabaseのlyric_lines.grammar.pointsが空でも、manual_analysis内の
+// 【英文】→【自然な和訳】→【文法ポイント】ブロックを直接読み、表示中の歌詞行へ反映する。
+function applyManualAnalysisGrammarBlocks(lines, manualText) {
+  const source = String(manualText || "");
+  if (!source || !Array.isArray(lines) || !lines.length) return lines;
+  const blocks = extractManualGrammarBlocksForDetail(source);
+  if (!blocks.length) return lines;
+
+  return lines.map((line, index) => {
+    const lyric = String(line?.lyric || "").trim();
+    const block = findManualGrammarBlockForLyric(lyric, blocks, index);
+    if (!block || !block.notes.length) return line;
+
+    const existingGrammar = (line && line.grammar && typeof line.grammar === "object") ? line.grammar : {};
+    const existingNotes = Array.isArray(existingGrammar.notes) ? existingGrammar.notes.filter(isRealGrammarNote) : [];
+    const mergedNotes = [...new Set([...block.notes, ...existingNotes].filter(isRealGrammarNote))].slice(0, 5);
+    const fixedTranslation = cleanTranslation(block.translation || line.translation || existingGrammar.translation || "", lyric) || line.translation || existingGrammar.translation || translateLine(lyric);
+
+    return {
+      ...line,
+      translation: fixedTranslation,
+      analysis_source: "manual_analysis",
+      preposition: "ChatGPT手動解析",
+      grammar: {
+        ...existingGrammar,
+        translation: fixedTranslation,
+        points: mergedNotes.map(note => String(note).split(/[：:]/)[0].trim()).filter(Boolean),
+        notes: mergedNotes,
+        words: Array.isArray(existingGrammar.words) ? existingGrammar.words : [],
+        examples: Array.isArray(existingGrammar.examples) ? existingGrammar.examples : similarExamples(lyric)
+      }
+    };
+  });
+}
+
+function extractManualGrammarBlocksForDetail(manualText) {
+  const source = String(manualText || "").replace(/\r\n/g, "\n");
+  const blocks = source
+    .split(/(?=【(?:英文|英語|原文)】)/g)
+    .map(b => b.trim())
+    .filter(b => /【(?:英文|英語|原文)】/.test(b));
+
+  return blocks.map((block, index) => {
+    const lyric = firstMeaningfulLine(extractManualSectionFromText(block, ["英文", "英語", "原文"]));
+    const translation = firstMeaningfulLine(extractManualSectionFromText(block, ["自然な和訳", "和訳", "日本語訳", "自然な日本語訳"]));
+    const grammarText = extractManualSectionFromText(block, ["文法ポイント", "使われている文法", "文法", "文法解説"]);
+    const notes = parseManualGrammarNotes(grammarText);
+    return { index, lyric, normalized: normalizeForManualBlockMatch(lyric), translation, notes };
+  }).filter(b => b.lyric && b.notes.length);
+}
+
+function findManualGrammarBlockForLyric(lyric, blocks, index) {
+  const normalized = normalizeForManualBlockMatch(lyric);
+  if (!normalized) return null;
+  const exact = blocks.find(b => b.normalized === normalized);
+  if (exact) return exact;
+
+  const contains = blocks.find(b => b.normalized && (b.normalized.includes(normalized) || normalized.includes(b.normalized)));
+  if (contains) return contains;
+
+  let best = null;
+  let bestScore = 0;
+  for (const block of blocks) {
+    const score = manualBlockTokenScore(normalized, block.normalized);
+    if (score > bestScore) {
+      bestScore = score;
+      best = block;
+    }
+  }
+  if (best && bestScore >= 0.55) return best;
+
+  if (blocks[index] && Math.abs(blocks[index].index - index) <= 1) return blocks[index];
+  return null;
+}
+
+function normalizeForManualBlockMatch(value) {
+  return normalizeLyricLine(String(value || ""))
+    .toLowerCase()
+    .replace(/[“”".,!?;:()\[\]{}]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function manualBlockTokenScore(a, b) {
+  const aa = new Set(String(a || "").split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(normalizeWord(w))));
+  const bb = new Set(String(b || "").split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(normalizeWord(w))));
+  if (!aa.size || !bb.size) return 0;
+  let hit = 0;
+  aa.forEach(w => {
+    const nw = normalizeWord(w);
+    if (bb.has(w) || [...expandWordVariants(nw)].some(v => bb.has(v))) hit += 1;
+  });
+  return hit / Math.max(aa.size, bb.size);
+}
+
 function hydrateDetailLinesFromManualAnalysis(lines, song, rawLyrics) {
   const manualText = String(song?.manual_analysis || "");
   const storedLines = Array.isArray(song?.lyric_lines) ? song.lyric_lines : [];
