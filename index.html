@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Lyrics English</title>
-  <!-- v46 edit save open detail / no refresh buttons on detail -->
+  <!-- v47 study guide page / keep v45 word and grammar display logic -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="manifest" href="manifest.json">
   <style>
@@ -101,7 +101,7 @@
       <div class="hero">
         <h2>洋楽の歌詞から、英語をふたりで育てる。</h2>
         <p class="muted">曲、歌詞解説、アーティスト情報、単語帳をチームで共有できます。</p>
-        <div class="actions"><button class="btn" data-screen="add">曲を追加</button><button class="btn secondary" data-screen="vocab">単語帳</button></div>
+        <div class="actions"><button class="btn" data-screen="add">曲を追加</button><button class="btn secondary" data-screen="vocab">単語帳</button><button class="btn blue" data-screen="study">英語勉強方法</button></div>
       </div>
       <div class="grid">
         <div>
@@ -113,6 +113,112 @@
     </section>
 
     <section id="songs" class="screen"><div class="card"><h3 class="section-title">曲一覧</h3><input id="search" placeholder="曲名・アーティストで検索"></div><div id="songList2"></div></section>
+
+    <section id="study" class="screen">
+      <div class="hero">
+        <h2>洋楽歌詞で英語を覚える流れ</h2>
+        <p class="muted">おすすめは「意味を理解する → 音で覚える → 自分で使う」の順番です。歌詞を読むだけより、単語・文法・音が定着しやすくなります。</p>
+        <div class="actions"><button class="btn" data-screen="songs">曲で練習する</button><button class="btn secondary" data-screen="home">Homeへ戻る</button></div>
+      </div>
+
+      <div class="card">
+        <h3 class="section-title">1. まずは歌詞を見ずに聴く</h3>
+        <p class="mini">最初から訳そうとせず、聞こえた単語だけ拾います。全部聞き取れなくてOKです。最初は「音に慣れる」ことが目的です。</p>
+        <ul class="mini">
+          <li>どんな感情の曲か</li>
+          <li>知っている単語があるか</li>
+          <li>サビで何回も出る表現は何か</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3 class="section-title">2. 歌詞を見ながら自然な意味を確認する</h3>
+        <p class="mini">次に歌詞を見て、1行ずつ意味を確認します。大事なのは、直訳しすぎないことです。</p>
+        <div class="manual-analysis">
+          <p><strong>I used to be love drunk</strong></p>
+          <p>直訳：私は恋に酔っていたものだった</p>
+          <p>自然な訳：昔は恋に夢中だった</p>
+        </div>
+        <p class="mini">洋楽は比喩が多いので、「日本語として自然か」を重視すると理解しやすくなります。</p>
+      </div>
+
+      <div class="card">
+        <h3 class="section-title">3. 単語は“全部”ではなく“使えるもの”だけ覚える</h3>
+        <p class="mini">1行につき、覚える単語は2〜5個くらいで十分です。歌詞理解や日常会話に使える単語・熟語を優先します。</p>
+        <ul class="mini">
+          <li>感情を表す語：lonely / broken / overwhelmed / regret</li>
+          <li>よく使う熟語：fall asleep / let go / move on / give up</li>
+          <li>比喩表現：shooting star / fireflies / hang by a thread</li>
+          <li>会話で使える表現：I’d rather / used to / feel like / make it through</li>
+        </ul>
+        <p class="mini">I / you / the / a / is などは、単独では覚えなくてOKです。</p>
+      </div>
+
+      <div class="card">
+        <h3 class="section-title">4. 文法は“使える形”で覚える</h3>
+        <p class="mini">文法名よりも、実際に使える型として覚えるのがおすすめです。</p>
+        <div class="manual-analysis">
+          <p><strong>used to + 動詞</strong> → 昔は〜していた<br>I used to be shy. / 昔は内気だった。</p>
+          <p><strong>would rather + 動詞</strong> → むしろ〜したい<br>I’d rather stay home. / むしろ家にいたい。</p>
+          <p><strong>make + 人 + 形容詞</strong> → 人を〜な状態にする<br>This song makes me happy. / この曲は私を幸せにする。</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 class="section-title">5. サビだけ音読・シャドーイングする</h3>
+        <p class="mini">1曲全部を歌えるようにする必要はありません。まずはサビだけで十分です。</p>
+        <ol class="mini">
+          <li>歌詞を見ながらゆっくり読む</li>
+          <li>曲に合わせて口パクする</li>
+          <li>小声で歌う</li>
+          <li>歌手のリズム・つながる音をまねる</li>
+        </ol>
+        <p class="mini">Move along は「ムーヴ アロング」ではなく、実際には「ムーヴァロン」のようにつながって聞こえます。この音のつながりに慣れることが大事です。</p>
+      </div>
+
+      <div class="card">
+        <h3 class="section-title">6. 好きなフレーズを自分の例文に変える</h3>
+        <p class="mini">歌詞を覚えるだけでなく、自分でも使える形にします。</p>
+        <div class="manual-analysis">
+          <p>歌詞：I’d rather stay awake<br>自分の例文：I’d rather stay home tonight. / 今夜はむしろ家にいたい。</p>
+          <p>歌詞：I used to be love drunk<br>自分の例文：I used to listen to this song every day. / 昔はこの曲を毎日聴いていた。</p>
+          <p>歌詞：Please take me away from here<br>自分の例文：Music takes me away from stress. / 音楽はストレスから私を解放してくれる。</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 class="section-title">7. 復習は「歌詞なし」で確認する</h3>
+        <p class="mini">翌日か数日後に、歌詞を見ずにもう一度聴きます。全部覚えていなくても、1曲から3〜5個の表現が残れば十分です。</p>
+        <ul class="mini">
+          <li>前より聞こえる単語が増えたか</li>
+          <li>サビの意味がすぐ浮かぶか</li>
+          <li>覚えた表現を1つ言えるか</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3 class="section-title">おすすめ学習ルーティン</h3>
+        <p class="mini"><strong>1日10〜15分</strong>で、少しずつ続けるのがおすすめです。</p>
+        <ol class="mini">
+          <li>曲を1回聴く</li>
+          <li>歌詞を4〜6行だけ読む</li>
+          <li>重要単語を確認する</li>
+          <li>サビを1回音読する</li>
+          <li>好きな表現で例文を1つ作る</li>
+        </ol>
+      </div>
+
+      <div class="card">
+        <h3 class="section-title">Lyrics Englishでのおすすめの使い方</h3>
+        <p class="mini"><strong>聴く → 和訳 → 単語タップ → 文法ポイント → 例文作成 → サビ練習</strong> の流れで使うのがおすすめです。</p>
+        <p class="mini">特に効果が高いのは、「この歌詞表現を日常英語にすると？」という練習です。</p>
+        <div class="manual-analysis">
+          <p>Everything is never as it seems.<br>→ Things are not always as they seem.<br>→ 物事はいつも見た通りとは限らない。</p>
+        </div>
+        <p class="mini">洋楽は、単語を暗記する教材というより、感情・音・表現をまとめて覚える教材として使うのが一番おすすめです。</p>
+      </div>
+    </section>
+
     <section id="detail" class="screen"><div id="songDetail"></div></section>
 
     <section id="add" class="screen">
@@ -170,6 +276,6 @@
   <div id="wordTooltip" class="word-tooltip" role="tooltip"></div>
   <div id="toast" class="toast"></div>
   <script src="config.js"></script>
-  <script src="app.js?v=46-edit-save-open-detail"></script>
+  <script src="app.js?v=47-study-guide-page"></script>
 </body>
 </html>
