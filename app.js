@@ -17,7 +17,7 @@ let currentUtterance = null;
 let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
-const APP_PATCH_VERSION = "v31-manual-analysis-reflect-stable";
+const APP_PATCH_VERSION = "v32-spotify-search-fix";
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
 const COMMON_PASSWORD = "12345";
@@ -138,8 +138,8 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v31-manual-analysis-reflect-stable";
-  console.log("Lyrics English v31-manual-analysis-reflect-stable loaded");
+  window.LYRICS_ENGLISH_VERSION = "v32-spotify-search-fix";
+  console.log("Lyrics English v32-spotify-search-fix loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
@@ -380,7 +380,7 @@ function openSong(id) {
     ? manualDetailLines
     : Array.isArray(s.lyric_lines) ? s.lyric_lines.map((line, i) => normalizeAIAnalysisLine(line, i)) : [];
   const youtubeThumb = getYoutubeThumbnail(s.youtube_url);
-  const spotifyUrl = s.spotify_url || makeSpotifySearchUrl(s.title, s.artist_name);
+  const spotifyUrl = resolveSpotifyUrl(s);
   const lyricLinks = normalizeLyricsLinks(s.lyrics_links || makeLyricsSearchLinks(s.title, s.artist_name));
   const savedCover = s.cover_art_url || "";
   qs("#songDetail").innerHTML = `
@@ -915,9 +915,56 @@ function highResAppleArtwork(url) {
   return String(url || "").replace(/\/\d+x\d+bb\.(jpg|png)$/i, "/600x600bb.$1");
 }
 
+function normalizeMusicSearchText(value, kind = "") {
+  let text = String(value || "")
+    .replace(/[’‘´`]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\[[^\]]*]/g, " ")
+    .replace(/\([^)]*(official|lyrics?|audio|video|mv|hd|4k|visualizer|live|remaster|remastered)[^)]*\)/ig, " ")
+    .replace(/\b(official|music video|lyric video|lyrics|audio|visualizer|hd|4k|remaster|remastered)\b/ig, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (kind === "artist") {
+    text = text
+      .replace(/\s*-\s*Topic$/i, "")
+      .replace(/VEVO$/i, "")
+      .trim();
+
+    // Spotify検索では全部大文字のアーティスト名より、通常の表記の方が拾いやすいことがあります。
+    if (/^[A-Z0-9 &'’.-]+$/.test(text) && /[A-Z]/.test(text)) {
+      text = text.toLowerCase().replace(/\b([a-z])/g, m => m.toUpperCase());
+    }
+  }
+
+  return text;
+}
+
 function makeSpotifySearchUrl(title, artist) {
-  const q = [title, artist].filter(Boolean).join(" ").trim();
-  return q ? `https://open.spotify.com/search/${encodeURIComponent(q)}` : "";
+  const cleanTitle = normalizeMusicSearchText(title, "title");
+  const cleanArtist = normalizeMusicSearchText(artist, "artist");
+
+  if (cleanTitle && cleanArtist) {
+    const filteredQuery = `track:"${cleanTitle}" artist:"${cleanArtist}"`;
+    return `https://open.spotify.com/search/${encodeURIComponent(filteredQuery)}`;
+  }
+
+  const fallbackQuery = [cleanTitle, cleanArtist].filter(Boolean).join(" ").trim();
+  return fallbackQuery ? `https://open.spotify.com/search/${encodeURIComponent(fallbackQuery)}` : "";
+}
+
+function isSpotifyDirectUrl(url) {
+  return /^https?:\/\/open\.spotify\.com\/(track|album|artist|playlist)\//i.test(String(url || "").trim());
+}
+
+function resolveSpotifyUrl(song) {
+  const saved = String(song?.spotify_url || "").trim();
+
+  // 直接曲URLなどが保存されている場合は、それを優先します。
+  if (isSpotifyDirectUrl(saved)) return saved;
+
+  // 古い検索URLが保存されている場合は、より精度の高い検索URLを作り直します。
+  return makeSpotifySearchUrl(song?.title || "", song?.artist_name || "") || saved;
 }
 
 function makeLyricsSearchLinks(title, artist) {
@@ -1950,7 +1997,7 @@ function editSong(id) {
   qs("#songTitle").value = s.title || "";
   qs("#artistName").value = s.artist_name || "";
   qs("#appleUrl").value = s.apple_music_url || "";
-  qs("#spotifyUrl").value = s.spotify_url || makeSpotifySearchUrl(s.title, s.artist_name);
+  qs("#spotifyUrl").value = resolveSpotifyUrl(s);
   qs("#coverArtUrl").value = s.cover_art_url || "";
   createLyricsLinksFromForm(false);
   qs("#genre").value = s.genre || "";
