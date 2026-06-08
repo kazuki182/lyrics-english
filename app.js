@@ -30,7 +30,7 @@ const LEARNING_WORDS = new Set([
   "remember", "memory", "memories", "moment", "alone", "hurt", "break", "swim", "thrown", "infinity", "erase", "storm",
   "leader", "whole", "pack", "beat", "sticks", "stones", "river", "lost", "open", "dark", "lover", "dancing",
   "blackhole", "black", "hole", "architect", "architects", "modern", "misery", "mortal", "ashes", "surrender", "fragile", "hollow", "regret", "anxiety", "pretend",
-  // v39: ChatGPT手動解析の単語データをword_dataへ保存し、歌詞ポップアップへ優先反映。
+  // v40: v39のword_data反映を維持し、ChatGPT手動解析の文法ポイント表示を復旧。
   "fear", "tears", "tear", "blood", "bleed", "breath", "breathe", "drown", "drowning", "sink", "sinking", "rise", "burn", "burning", "buried",
   "alive", "dead", "ghost", "shadow", "heaven", "hell", "soul", "heart", "mind", "dream", "nightmare", "silence", "scream", "whisper",
   "chaos", "enemy", "denial", "truth", "trust", "faith", "blame", "shame", "guilt", "numb", "escape", "fall", "fallen", "apart",
@@ -204,7 +204,7 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v39-word-data-popup-sync";
+  window.LYRICS_ENGLISH_VERSION = "v40-grammar-restore-word-data";
   console.log("Lyrics English v39-word-data-popup-sync loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
@@ -1373,6 +1373,8 @@ example_ja: 例文の日本語訳
 ・英検3級〜準2級以上を目安にしてください。日常語でも、この歌詞の意味に大きく関わる単語は選んでください
 ・I / you / me / the / a / is / am / are / and / or / to / of / in など、単独では説明価値が低い基本語は除外してください。ただし be tired of / fall apart / let go のような熟語の一部なら選んでください
 ・【単語データ】は必ず word / meaning / usage / example / example_ja の5項目で書いてください
+・【文法ポイント】は単語データとは別に、各英文ごとに必ず1〜3個書いてください。空欄にしないでください
+・【文法ポイント】には、この行で実際に使われている would / if節 / 仮定 / 否定 / 比較 / 熟語 / 前置詞 / to不定詞 / -ing形 などを短く説明してください
 ・アプリは【単語データ】を優先して読み取るため、単語ごとに必ず1セットずつ出してください
 ・出力はそのままアプリに貼れるように、見やすく整理してください`;
 }
@@ -2968,6 +2970,159 @@ function mergeManualWordLists(a, b) {
 
 function escapeRegExp(value) {
   return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+
+// v40: 文法ポイント復旧用の上書き関数。
+// v39のword_data保存・単語ポップアップ優先は維持し、手動解析の文法欄だけを強化する。
+function parseManualAnalysis(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return [];
+
+  const normalized = raw.replace(/\r\n/g, "\n");
+  const globalWords = parseManualWords(
+    extractManualSectionFromText(normalized, ["単語データ", "word data", "vocabulary data"]) ||
+    extractManualSectionFromText(normalized, ["単語の意味", "重要単語", "単語", "語彙"])
+  );
+  const globalExamples = parseBulletLines(
+    extractManualSectionFromText(normalized, ["例文", "類似例文"])
+  ).map(x => x.replace(/^・\s*/, "").trim()).filter(Boolean);
+  const globalGrammarNotes = extractAllGrammarNotesFromManualText(normalized);
+
+  const blocks = normalized
+    .split(/(?=【(?:英文|英語|原文)】)/g)
+    .map(b => b.trim())
+    .filter(b => /【(?:英文|英語|原文)】/.test(b));
+
+  let lines = [];
+
+  if (blocks.length) {
+    blocks.forEach((block, index) => {
+      const lyric = firstMeaningfulLine(extractManualSectionFromText(block, ["英文", "英語", "原文"]));
+      if (!lyric) return;
+      const translation = firstMeaningfulLine(extractManualSectionFromText(block, ["自然な和訳", "和訳", "日本語訳", "自然な日本語訳"]));
+      const grammarText = extractManualSectionFromText(block, ["文法ポイント", "使われている文法", "文法", "文法解説"]);
+      const localWordsText = extractManualSectionFromText(block, ["単語データ", "word data", "vocabulary data"]) ||
+        extractManualSectionFromText(block, ["単語の意味", "重要単語", "単語", "語彙"]);
+      const localWords = parseManualWords(localWordsText);
+      const wordItems = localWords.length ? localWords : wordsForLyricFromManual(lyric, globalWords);
+      let notes = parseManualGrammarNotes(grammarText);
+      if (!notes.length) notes = grammarNotesForLyricFromManual(lyric, globalGrammarNotes);
+      const examples = parseBulletLines(extractManualSectionFromText(block, ["例文", "類似例文"]))
+        .map(item => item.replace(/^・\s*/, "").trim())
+        .filter(Boolean);
+      lines.push(buildManualLine(index + 1, lyric, translation, notes, wordItems, examples.length ? examples : examplesForLyricFromManual(lyric, globalExamples)));
+    });
+  }
+
+  if (!lines.length) {
+    const lyrics = getCurrentLyricsLinesForManualParse();
+    const translations = extractRepeatedSectionValues(normalized, ["自然な和訳", "和訳", "日本語訳", "自然な日本語訳"]);
+    const grammarValues = extractRepeatedSectionValues(normalized, ["文法ポイント", "使われている文法", "文法", "文法解説"]);
+    if (lyrics.length) {
+      lines = lyrics.map((lyric, index) => {
+        const wordItems = wordsForLyricFromManual(lyric, globalWords);
+        let notes = grammarValues[index] ? parseManualGrammarNotes(grammarValues[index]) : [];
+        if (!notes.length) notes = grammarNotesForLyricFromManual(lyric, globalGrammarNotes);
+        return buildManualLine(index + 1, lyric, translations[index] || "", notes, wordItems, examplesForLyricFromManual(lyric, globalExamples));
+      });
+    }
+  }
+
+  return lines.map((line, index) => {
+    const lyric = String(line.lyric || "");
+    const currentWords = Array.isArray(line.grammar?.words) ? line.grammar.words : [];
+    const mergedWords = mergeManualWordLists(currentWords, wordsForLyricFromManual(lyric, globalWords));
+    let notes = Array.isArray(line.grammar?.notes) ? line.grammar.notes.filter(isRealGrammarNote) : [];
+    if (!notes.length) notes = grammarNotesForLyricFromManual(lyric, globalGrammarNotes);
+    return buildManualLine(
+      Number(line.line_no) || index + 1,
+      lyric,
+      line.translation,
+      notes,
+      mergedWords,
+      Array.isArray(line.grammar?.examples) ? line.grammar.examples : []
+    );
+  }).filter(l => l.lyric);
+}
+
+function parseManualGrammarNotes(text) {
+  return parseBulletLines(text)
+    .map(item => String(item || "").replace(/^[-・*]\s*/, "").trim())
+    .filter(isRealGrammarNote)
+    .slice(0, 5);
+}
+
+function isRealGrammarNote(note) {
+  const s = String(note || "").trim();
+  if (!s) return false;
+  if (/重要な単語の意味と前後の文脈/.test(s)) return false;
+  if (/重要な語順や表現だけ/.test(s)) return false;
+  if (/^文法ポイント/.test(s)) return false;
+  if (/^例文/.test(s)) return false;
+  return true;
+}
+
+function extractAllGrammarNotesFromManualText(text) {
+  const values = extractRepeatedSectionValues(text, ["文法ポイント", "使われている文法", "文法", "文法解説"]);
+  return values.flatMap(v => parseManualGrammarNotes(v));
+}
+
+function grammarNotesForLyricFromManual(lyric, notes) {
+  const lyricWords = new Set(getWords(lyric).map(normalizeWord).filter(w => w.length > 2));
+  const matched = (notes || []).filter(note => {
+    const noteWords = getWords(note).map(normalizeWord).filter(w => w.length > 2 && !STOP_WORDS.has(w));
+    return noteWords.some(w => lyricWords.has(w) || expandWordVariants(w).some(v => lyricWords.has(v)));
+  });
+  return matched.slice(0, 4);
+}
+
+function grammarNotes(line, points) {
+  const normalized = normalizeLyricLine(line);
+  const unique = [...new Set(points || [])];
+  const notes = [];
+  const lower = normalized.toLowerCase();
+
+  if (/\byou\s+would\s+not\s+believe\b/i.test(normalized) || /\byou\s+wouldn't\s+believe\b/i.test(normalized)) {
+    notes.push("would not believe: would を使い、『信じられないだろう』という仮定的・やわらかい表現です。");
+  }
+  if (/\bif\b/i.test(normalized)) {
+    notes.push("if節: 『もし〜なら』という条件を表し、歌詞では想像上の場面を作ります。");
+  }
+  if (/\bnot\b|n't\b|\bnever\b|\bno\b/i.test(normalized)) {
+    notes.push("否定: not / n't / never などで『〜ではない』『〜しない』という意味を作ります。");
+  }
+  if (/\b(would|could|should|might|may|can|will|must)\b/i.test(normalized)) {
+    notes.push("助動詞: would / could / can などで、可能性・気持ち・仮定のニュアンスを足します。");
+  }
+
+  if (/i'm tired of being what you want me to be/i.test(normalized)) {
+    return [
+      "be tired of + 名詞 / 動名詞: 『〜に疲れている、〜にうんざりしている』。",
+      "being: be の -ing形。ここでは動名詞で『〜でいること』。",
+      "what you want me to be: what節で『あなたが私に望む姿』。",
+      "want + 人 + to do: to不定詞を使い『人に〜してほしい』。"
+    ];
+  }
+
+  unique.forEach(point => {
+    if (point === "be動詞") notes.push("be動詞: 『〜です』『〜でいる』など状態を表します。");
+    if (point === "be tired of -ing") notes.push("be tired of + 名詞 / 動名詞: 『〜に疲れている、〜にうんざりしている』。");
+    if (point === "動名詞 / 現在分詞") notes.push("-ing形: 動名詞なら『〜すること』、現在分詞なら『〜している』。");
+    if (point === "what節") notes.push("what節: 『〜すること・もの』という名詞のまとまり。");
+    if (point === "want + 人 + to do") notes.push("want + 人 + to do: 『人に〜してほしい』。");
+    if (point === "to不定詞") notes.push("to不定詞: 『〜すること』『〜するために』を作ります。");
+    if (point === "否定") notes.push("否定: not / n't で『〜ではない』『〜しない』。");
+    if (point === "比較") notes.push("比較: best / better / more などで比べる意味。");
+    if (point === "前置詞") notes.push("前置詞: of / to / in などで単語同士の関係をつなぎます。");
+    if (point === "助動詞") notes.push("助動詞: can / will / should などで可能・未来・気持ちを足します。");
+  });
+
+  if (/\b[a-zA-Z']+ing\b/.test(lower)) notes.push("-ing形: 動作中の様子や『〜すること』というまとまりを作ります。");
+  if (/\bto\s+[a-zA-Z']+\b/i.test(normalized)) notes.push("to不定詞: 『〜すること』『〜するために』の意味を作ります。");
+  if (/\b(in|on|at|for|to|with|from|of|by|about|into|over|under)\b/i.test(normalized)) notes.push("前置詞: 名詞との関係をつなぎ、場所・方向・原因などを表します。");
+
+  return [...new Set(notes)].filter(isRealGrammarNote).slice(0, 4);
 }
 
 })();
