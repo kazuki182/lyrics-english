@@ -74,6 +74,10 @@
 
     @media print{.top,.tabbar,.no-print,.screen:not(.active),.modal{display:none!important}body{background:white;color:#111}.app{padding:0}.card{box-shadow:none;border:0;background:white;color:#111}@page{size:A4;margin:14mm}}
   .plain-word{opacity:.72;cursor:default}
+
+    .analysis-state-grid { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+    .danger-tag { background:#5b2330; color:#ffd5df; border-color:#8b3a4a; }
+    .warn-text { color:#ffd28a; margin-top:10px; }
 </style>
 </head>
 <body>
@@ -166,6 +170,6 @@
   <div id="wordTooltip" class="word-tooltip" role="tooltip"></div>
   <div id="toast" class="toast"></div>
   <script src="config.js"></script>
-  <script src="app.js?v=42-save-manual-detail-sync"></script>
+  <script src="app.js?v=43-detail-display-source-fix"></script>
 </body>
 </html>

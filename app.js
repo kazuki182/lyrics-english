@@ -30,7 +30,7 @@ const LEARNING_WORDS = new Set([
   "remember", "memory", "memories", "moment", "alone", "hurt", "break", "swim", "thrown", "infinity", "erase", "storm",
   "leader", "whole", "pack", "beat", "sticks", "stones", "river", "lost", "open", "dark", "lover", "dancing",
   "blackhole", "black", "hole", "architect", "architects", "modern", "misery", "mortal", "ashes", "surrender", "fragile", "hollow", "regret", "anxiety", "pretend",
-  // v42: 保存後に手動解析・文法ポイントを詳細ページへ確実反映。仮文法を廃止。
+  // v43: 詳細ページの文法表示元を修正。保存済みmanual_analysisを優先し、解析状態を表示。
   "fear", "tears", "tear", "blood", "bleed", "breath", "breathe", "drown", "drowning", "sink", "sinking", "rise", "burn", "burning", "buried",
   "alive", "dead", "ghost", "shadow", "heaven", "hell", "soul", "heart", "mind", "dream", "nightmare", "silence", "scream", "whisper",
   "chaos", "enemy", "denial", "truth", "trust", "faith", "blame", "shame", "guilt", "numb", "escape", "fall", "fallen", "apart",
@@ -204,7 +204,7 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v42-save-manual-detail-sync";
+  window.LYRICS_ENGLISH_VERSION = "v43-detail-display-source-fix";
   console.log("Lyrics English v39-word-data-popup-sync loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
@@ -441,12 +441,18 @@ function songListItem(s) {
 function openSong(id) {
   const s = songs.find(x => x.id === id);
   if (!s) return;
-  const manualDetailLines = parseManualAnalysisForRaw(s.manual_analysis || "", s.lyrics_raw || "");
+  const storedLyricLines = Array.isArray(s.lyric_lines) ? s.lyric_lines : [];
+  const rawForManual = (s.lyrics_raw && String(s.lyrics_raw).trim())
+    ? s.lyrics_raw
+    : storedLyricLines.map(l => l?.lyric || "").filter(Boolean).join("\n");
+  const manualDetailLines = parseManualAnalysisForRaw(s.manual_analysis || "", rawForManual);
+  const displaySource = manualDetailLines.length ? "manual_analysis" : (storedLyricLines.length ? "lyric_lines" : "none");
   const baseLines = manualDetailLines.length
     ? manualDetailLines
-    : Array.isArray(s.lyric_lines) ? s.lyric_lines.map((line, i) => normalizeAIAnalysisLine(line, i)) : [];
+    : storedLyricLines.map((line, i) => normalizeAIAnalysisLine(line, i));
   const songWordData = getSongWordData(s);
   const lines = enrichLinesWithSongWordData(baseLines, songWordData);
+  const analysisState = getAnalysisStateHtml(s, lines, displaySource);
   const youtubeThumb = getYoutubeThumbnail(s.youtube_url);
   const spotifyUrl = resolveSpotifyUrl(s);
   const lyricLinks = normalizeLyricsLinks(s.lyrics_links || makeLyricsSearchLinks(s.title, s.artist_name));
@@ -504,10 +510,40 @@ function openSong(id) {
       <h3 class="section-title">アーティスト情報</h3>
       <div id="artistInfo" class="mini">アーティスト情報を取得中...</div>
     </div>
+    ${analysisState}
     <div class="card"><h3 class="section-title">歌詞解説</h3><p class="mini">まず通常の歌詞解説を表示します。単語に触れると意味・使い方・例文が出ます。クリックすると単語帳追加画面が開きます。</p><div class="actions" style="margin:12px 0 16px"><button class="btn green" data-action="refresh-analysis" data-id="${escAttr(s.id)}" type="button">この曲の分析レビューを更新</button></div>${lines.map(l => lineHtml(l, s.id, s.title, s.artist_name)).join("") || "<p class='mini'>歌詞がありません。</p>"}</div>
     ${s.manual_analysis ? `<div class="card"><details class="manual-analysis-toggle"><summary>ChatGPT解析結果を開く</summary><p class="mini">ChatGPTで作成した解析結果です。必要なときだけ開いて確認できます。</p><div class="manual-analysis">${nl(s.manual_analysis)}</div></details></div>` : ""}`;
   showScreen("detail");
   enrichSongDetail(s, youtubeThumb, savedCover);
+}
+
+
+function getAnalysisStateHtml(song, lines, displaySource) {
+  const manualLen = String(song?.manual_analysis || "").length;
+  const storedLineCount = Array.isArray(song?.lyric_lines) ? song.lyric_lines.length : 0;
+  const wordDataCount = Array.isArray(song?.word_data) ? song.word_data.length : 0;
+  const displayLineCount = Array.isArray(lines) ? lines.length : 0;
+  const grammarCount = (Array.isArray(lines) ? lines : []).filter(line => {
+    const notes = line?.grammar && Array.isArray(line.grammar.notes) ? line.grammar.notes : [];
+    return notes.some(isRealGrammarNote);
+  }).length;
+  const translationCount = (Array.isArray(lines) ? lines : []).filter(line => cleanTranslation(line?.translation || line?.grammar?.translation || "", line?.lyric || "")).length;
+  const sourceLabel = displaySource === "manual_analysis" ? "manual_analysis（手動解析）" : displaySource === "lyric_lines" ? "lyric_lines（保存済み行データ）" : "未取得";
+  const statusClass = grammarCount ? "tag" : "tag danger-tag";
+  return `
+    <div class="card analysis-state-card">
+      <h3 class="section-title">解析データ状態</h3>
+      <div class="analysis-state-grid mini">
+        <span class="tag">表示元: ${esc(sourceLabel)}</span>
+        <span class="tag">manual_analysis: ${manualLen ? "あり" : "なし"}</span>
+        <span class="tag">word_data: ${wordDataCount}件</span>
+        <span class="tag">lyric_lines: ${storedLineCount}行</span>
+        <span class="tag">表示行: ${displayLineCount}行</span>
+        <span class="${statusClass}">文法ポイント: ${grammarCount}行</span>
+        <span class="tag">自然な和訳: ${translationCount}行</span>
+      </div>
+      ${grammarCount ? "" : `<p class="mini warn-text">文法ポイントが詳細表示に渡っていません。編集画面で解析プレビューに文法が出ている場合は、保存後のデータ変換を確認してください。</p>`}
+    </div>`;
 }
 
 async function enrichSongDetail(song, youtubeThumb, savedCover = "") {
@@ -592,7 +628,9 @@ function lineHtml(line, songId, songTitle, artistName) {
   const lyric = String(line?.lyric || "").trim();
   const g = normalizeAnalysisLine(line);
   const translation = g.translation || translateLine(lyric);
-  const notes = (g.notes && g.notes.length ? g.notes : grammarNotes(lyric, g.points || [])).slice(0, 5);
+  const fromManual = line?.preposition === "ChatGPT手動解析" || line?.analysis_source === "manual_analysis";
+  const realNotes = (Array.isArray(g.notes) ? g.notes : []).filter(isRealGrammarNote);
+  const notes = (realNotes.length ? realNotes : (fromManual ? [] : grammarNotes(lyric, g.points || []))).slice(0, 5);
   const words = mergeLineWords(lyric, g.words).slice(0, 20);
   const examples = (g.examples && g.examples.length ? g.examples : similarExamples(lyric)).slice(0, 3);
   return `<div class="lyrics-line lyrics-line-simple">
@@ -2906,12 +2944,13 @@ function parseManualAnalysis(text) {
 function buildManualLine(lineNo, lyric, translation, notes, words, examples) {
   const fixedTranslation = cleanTranslation(translation, lyric) || translateLine(lyric);
   const wordItems = Array.isArray(words) && words.length ? words : vocabularyItems(lyric).slice(0, 6);
-  const grammarNotesValue = Array.isArray(notes) && notes.length ? notes : grammarNotesFromManualWords(wordItems, lyric);
+  const grammarNotesValue = Array.isArray(notes) ? notes.filter(isRealGrammarNote) : [];
   const examplesValue = Array.isArray(examples) && examples.length ? examples : similarExamples(lyric);
   return {
     line_no: lineNo,
     lyric,
     translation: fixedTranslation,
+    analysis_source: "manual_analysis",
     grammar: {
       translation: fixedTranslation,
       points: grammarNotesValue.map(note => String(note).split(/[：:]/)[0].trim()).filter(Boolean),
