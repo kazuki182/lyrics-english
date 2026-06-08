@@ -204,8 +204,8 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v46-edit-save-open-detail";
-  console.log("Lyrics English v45-manual-grammar-block-direct loaded");
+  window.LYRICS_ENGLISH_VERSION = "v47-study-guide-page";
+  console.log("Lyrics English v47-study-guide-page loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
