@@ -18,7 +18,7 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v35-genre-difficulty";
+const APP_PATCH_VERSION = "v36-featuring-cleanup";
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
 const COMMON_PASSWORD = "12345";
@@ -139,7 +139,7 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v34-duplicate-guard-savefix";
+  window.LYRICS_ENGLISH_VERSION = "v36-featuring-cleanup";
   console.log("Lyrics English v34-duplicate-guard-savefix loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
@@ -645,33 +645,78 @@ function extractYoutubeId(url) {
   }
 }
 
+
+function stripFeaturingText(value) {
+  return String(value || "")
+    .replace(/\s*[\(\[]?\s*(?:feat\.?|ft\.?|featuring)\s+[^\)\]\-–—|/]+[\)\]]?/ig, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function splitMainAndFeatured(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/^(.*?)(?:\s*[\(\[]?\s*(?:feat\.?|ft\.?|featuring)\s+(.+?)[\)\]]?)\s*$/i);
+  if (!match) return { main: stripFeaturingText(text), featured: "" };
+  return {
+    main: stripFeaturingText(match[1]),
+    featured: String(match[2] || "").replace(/[\)\]]+$/g, "").trim()
+  };
+}
+
+function cleanMainArtistName(value) {
+  return stripFeaturingText(value)
+    .replace(/\s+-\s+Topic$/i, "")
+    .replace(/VEVO$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function cleanMainSongTitle(value) {
+  return stripFeaturingText(value)
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function parseYoutubeTitle(title, channel) {
-  let clean = title
+  let clean = String(title || "")
     .replace(/\[[^\]]*]/g, " ")
     .replace(/\([^)]*(official|lyrics?|audio|video|mv|hd|4k)[^)]*\)/ig, " ")
     .replace(/\bOfficial\b|\bMusic Video\b|\bLyric Video\b|\bLyrics\b|\bAudio\b/ig, " ")
     .replace(/\s+/g, " ")
     .trim();
-  let artist = (channel || "").replace(/ - Topic$/i, "").replace(/VEVO$/i, "").trim();
+  let artist = cleanMainArtistName(channel || "");
   let song = clean;
   for (const sep of [" - ", " – ", " — "]) {
     if (clean.includes(sep)) {
       const parts = clean.split(sep).map(x => x.trim()).filter(Boolean);
       if (parts.length >= 2) {
-        artist = parts[0];
+        artist = cleanMainArtistName(parts[0]);
         song = parts.slice(1).join(" - ");
         break;
       }
     }
   }
-  return { title: song || clean || "Unknown Song", artist: artist || "Artist Name", genre: "Pop", profile: makeArtistProfile(artist || channel || "このアーティスト") };
+  const featuredFromSong = splitMainAndFeatured(song);
+  const featuredFromArtist = splitMainAndFeatured(artist);
+  song = cleanMainSongTitle(featuredFromSong.main || song);
+  artist = cleanMainArtistName(featuredFromArtist.main || artist);
+  return {
+    title: song || cleanMainSongTitle(clean) || "Unknown Song",
+    artist: artist || "Artist Name",
+    featured_artist: featuredFromSong.featured || featuredFromArtist.featured || "",
+    genre: "Pop",
+    profile: makeArtistProfile(artist || channel || "このアーティスト")
+  };
 }
 
 function applySongGuess(g) {
-  qs("#songTitle").value = g.title || "";
-  qs("#artistName").value = g.artist || "";
+  const title = cleanMainSongTitle(g.title || "");
+  const artist = cleanMainArtistName(g.artist || "");
+  qs("#songTitle").value = title;
+  qs("#artistName").value = artist;
   qs("#genre").value = g.genre || "Pop";
-  qs("#artistProfile").value = getJapaneseArtistProfile(g.artist || "このアーティスト", g.profile || "");
+  qs("#artistProfile").value = getJapaneseArtistProfile(artist || "このアーティスト", g.profile || "");
+  if (g.featured_artist) toast(`参加アーティスト「${g.featured_artist}」は検索精度のためアーティスト欄から外しました`);
 }
 
 function makeArtistProfile(artist) {
@@ -722,9 +767,14 @@ function getDisplayArtistProfile(song) {
 async function fetchArtistInfo(artistName) {
   const rawName = (artistName || "").trim();
   if (!rawName) return null;
+  const mainName = cleanMainArtistName(rawName);
   const candidates = uniqueTextValues([
-    rawName,
-    titleCaseArtist(rawName),
+    mainName,
+    titleCaseArtist(mainName),
+    `${mainName} band`,
+    `${mainName} music artist`,
+    `${mainName} musician`,
+    `${mainName} rock band`,
     rawName.replace(/\s+-\s+Topic$/i, ""),
     rawName.replace(/VEVO$/i, "")
   ]);
@@ -874,8 +924,10 @@ function placeholderImage() {
 }
 
 async function autoFillMusicLinks() {
-  const title = qs("#songTitle").value.trim();
-  const artist = qs("#artistName").value.trim();
+  const title = cleanMainSongTitle(qs("#songTitle").value.trim());
+  const artist = cleanMainArtistName(qs("#artistName").value.trim());
+  qs("#songTitle").value = title;
+  qs("#artistName").value = artist;
   if (!title || !artist) { toast("曲名とアーティスト名を先に入力してください"); return; }
   const spotifyUrl = makeSpotifySearchUrl(title, artist);
   qs("#spotifyUrl").value = spotifyUrl;
@@ -892,7 +944,7 @@ async function autoFillMusicLinks() {
 }
 
 async function fetchAppleMusicInfo(title, artist) {
-  const term = `${title} ${artist}`.trim();
+  const term = `${cleanMainSongTitle(title)} ${cleanMainArtistName(artist)}`.trim();
   const params = new URLSearchParams({ term, media: "music", entity: "song", country: "JP", limit: "1" });
   let res = await fetch(`https://itunes.apple.com/search?${params.toString()}`);
   let json = await res.json();
@@ -918,7 +970,7 @@ function highResAppleArtwork(url) {
 }
 
 function normalizeMusicSearchText(value, kind = "") {
-  let text = String(value || "")
+  let text = stripFeaturingText(String(value || ""))
     .replace(/[’‘´`]/g, "'")
     .replace(/[“”]/g, '"')
     .replace(/\[[^\]]*]/g, " ")
@@ -990,7 +1042,7 @@ function makeGeniusLyricsUrl(title, artist) {
 }
 
 function cleanSongTitleForGenius(title) {
-  return String(title || "")
+  return stripFeaturingText(title)
     .replace(/\([^)]*(official|lyrics?|audio|video|mv|hd|4k)[^)]*\)/ig, " ")
     .replace(/\[[^\]]*(official|lyrics?|audio|video|mv|hd|4k)[^\]]*\]/ig, " ")
     .replace(/Official|Music Video|Lyric Video|Lyrics|Audio/ig, " ")
@@ -999,7 +1051,7 @@ function cleanSongTitleForGenius(title) {
 }
 
 function cleanArtistForGenius(artist) {
-  return String(artist || "")
+  return cleanMainArtistName(artist)
     .replace(/\s*VEVO$/i, "")
     .replace(/\s*-\s*Topic$/i, "")
     .replace(/\s+/g, " ")
@@ -1030,8 +1082,10 @@ function normalizeLyricsLinks(value) {
 }
 
 function createLyricsLinksFromForm(showToast = true) {
-  const title = qs("#songTitle").value.trim();
-  const artist = qs("#artistName").value.trim();
+  const title = cleanMainSongTitle(qs("#songTitle").value.trim());
+  const artist = cleanMainArtistName(qs("#artistName").value.trim());
+  qs("#songTitle").value = title;
+  qs("#artistName").value = artist;
   if (!title || !artist) { if (showToast) toast("曲名とアーティスト名を先に入力してください"); return null; }
   const links = makeLyricsSearchLinks(title, artist);
   const preview = qs("#lyricsLinksPreview");
@@ -1049,6 +1103,8 @@ function createLyricsLinksFromForm(showToast = true) {
 }
 
 function buildChatGPTPrompt(title, artist, lyrics) {
+  const promptTitle = cleanMainSongTitle(title);
+  const promptArtist = cleanMainArtistName(artist);
   return `あなたは日本人向けの洋楽英語学習アプリ「Lyrics English」の英語教師です。
 
 以下の洋楽歌詞を、英語学習用に解析してください。
@@ -1062,10 +1118,10 @@ function buildChatGPTPrompt(title, artist, lyrics) {
 ・説明は長すぎず、アプリに表示しやすい形にする
 
 曲名：
-${title || "未入力"}
+${promptTitle || "未入力"}
 
 アーティスト：
-${artist || "未入力"}
+${promptArtist || "未入力"}
 
 歌詞：
 ${lyrics || "未入力"}
@@ -1815,7 +1871,7 @@ function prepositionText(line) {
 
 
 function normalizeSongIdentity(value) {
-  return String(value || "")
+  return stripFeaturingText(value)
     .toLowerCase()
     .normalize("NFKC")
     .replace(/[’‘`´]/g, "'")
@@ -1841,8 +1897,10 @@ async function saveSong() {
   const editId = qs("#editId").value || "";
   const raw = normalizeLyricsText(qs("#lyricsRaw").value.trim());
   qs("#lyricsRaw").value = raw;
-  const title = qs("#songTitle").value.trim();
-  const artistName = qs("#artistName").value.trim();
+  const title = cleanMainSongTitle(qs("#songTitle").value.trim());
+  const artistName = cleanMainArtistName(qs("#artistName").value.trim());
+  qs("#songTitle").value = title;
+  qs("#artistName").value = artistName;
 
   if (!title || !raw) {
     toast("曲名と歌詞は必須です");
