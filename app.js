@@ -17,7 +17,7 @@ let currentUtterance = null;
 let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
-const APP_PATCH_VERSION = "v32-spotify-search-fix";
+const APP_PATCH_VERSION = "v33-translation-first-collapse";
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
 const COMMON_PASSWORD = "12345";
@@ -138,8 +138,8 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v32-spotify-search-fix";
-  console.log("Lyrics English v32-spotify-search-fix loaded");
+  window.LYRICS_ENGLISH_VERSION = "v33-translation-first-collapse";
+  console.log("Lyrics English v33-translation-first-collapse loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
@@ -523,20 +523,19 @@ function lineHtml(line, songId, songTitle, artistName) {
   const notes = (g.notes && g.notes.length ? g.notes : grammarNotes(lyric, g.points || [])).slice(0, 5);
   const words = mergeLineWords(lyric, g.words).slice(0, 10);
   const examples = (g.examples && g.examples.length ? g.examples : similarExamples(lyric)).slice(0, 3);
-  return `<div class="lyrics-line">
+  return `<div class="lyrics-line lyrics-line-simple">
     <div class="en">${wordify(lyric, songId, line.line_no, songTitle, artistName, words)}</div>
     <div class="jp"><b>自然な和訳：</b>${esc(translation)}</div>
-    <div class="mini compact-analysis">
-      <b>文法ポイント（要約）</b>
-      <ul class="grammar-list">
-        ${(notes.length ? notes : ["重要な単語と語順から意味をつかみます。"]).map(note => `<li>${esc(note)}</li>`).join("")}
-      </ul>
-      <b>単語の意味</b>
-      <ul class="grammar-list">
-        ${(words.length ? words : [{ word: "重要単語", meaning: "英検準2級以上を目安にした重要単語は少なめです" }]).map(w => `<li><b>${esc(w.word)}</b>: ${esc(w.meaning || "意味を確認してください")}${w.usage ? ` / ${esc(w.usage)}` : ""}</li>`).join("")}
-      </ul>
-      <b>例文</b><br>${nl(formatExamples(examples))}
-    </div>
+    <details class="line-extra">
+      <summary>文法ポイントを表示</summary>
+      <div class="mini compact-analysis">
+        <b>文法ポイント（要約）</b>
+        <ul class="grammar-list">
+          ${(notes.length ? notes : ["重要な語順や表現だけを確認します。"]).map(note => `<li>${esc(note)}</li>`).join("")}
+        </ul>
+        <b>例文</b><br>${nl(formatExamples(examples))}
+      </div>
+    </details>
     <div class="actions" style="margin-top:12px">
       <button class="btn secondary" data-action="speak" data-rate="1" data-text="${escAttr(lyric)}">再生</button>
       <button class="btn secondary" data-action="speech-pause" type="button">一時停止 / 再開</button>
@@ -1626,22 +1625,19 @@ function normalizeGrammar(grammar) {
 
 function grammarHtml(g) {
   const notes = g.notes || [];
-  const words = g.words || [];
   return `
     <div class="mini compact-analysis">
       <b>自然な和訳</b><br>${esc(g.translation || "和訳を作成できませんでした")}
-
-      <br><br><b>文法ポイント（要約）</b>
-      <ul class="grammar-list">
-        ${(notes.length ? notes : ["この行は、語順と前後の文脈で意味をつかみます。"]).map(note => `<li>${esc(note)}</li>`).join("")}
-      </ul>
-
-      <b>単語の意味</b>
-      <ul class="grammar-list">
-        ${(words.length ? words : [{ word: "重要単語", meaning: "英検準2級以上を目安にした重要単語は少なめです" }]).map(w => `<li><b>${esc(w.word)}</b>: ${esc(w.meaning)}</li>`).join("")}
-      </ul>
-
-      <b>例文</b><br>${nl((g.examples || []).slice(0, 2).join("\n"))}
+      <details class="line-extra">
+        <summary>文法ポイントを表示</summary>
+        <div class="mini compact-analysis">
+          <b>文法ポイント（要約）</b>
+          <ul class="grammar-list">
+            ${(notes.length ? notes : ["この行は、語順と前後の文脈で意味をつかみます。"]).map(note => `<li>${esc(note)}</li>`).join("")}
+          </ul>
+          <b>例文</b><br>${nl((g.examples || []).slice(0, 2).join("\n"))}
+        </div>
+      </details>
     </div>`;
 }
 

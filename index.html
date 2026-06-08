@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Lyrics English</title>
-  <!-- v25 manual analysis priority / refresh fix -->
+  <!-- v33 translation first / grammar collapse -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="manifest" href="manifest.json">
   <style>
@@ -63,6 +63,14 @@
       .word-tooltip{display:none!important;}
       .sheet{padding:18px 16px;}
     }
+
+    /* v33: show translation first, keep grammar collapsed for easier lyric tracking */
+    .lyrics-line-simple .jp{margin-bottom:6px;}
+    .line-extra{border-top:1px solid var(--line);padding-top:10px;margin-top:10px;}
+    .line-extra summary{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:rgba(255,255,255,.06);border-radius:999px;padding:8px 12px;color:#dbeafe;font-size:13px;font-weight:900;cursor:pointer;touch-action:manipulation;}
+    .line-extra summary::after{content:"＋";color:#ffe9a8;font-weight:900;}
+    .line-extra[open] summary::after{content:"－";}
+    .line-extra .compact-analysis{margin-top:10px;}
 
     @media print{.top,.tabbar,.no-print,.screen:not(.active),.modal{display:none!important}body{background:white;color:#111}.app{padding:0}.card{box-shadow:none;border:0;background:white;color:#111}@page{size:A4;margin:14mm}}
   .plain-word{opacity:.72;cursor:default}
@@ -158,6 +166,6 @@
   <div id="wordTooltip" class="word-tooltip" role="tooltip"></div>
   <div id="toast" class="toast"></div>
   <script src="config.js"></script>
-  <script src="app.js?v=32-spotify-search-fix"></script>
+  <script src="app.js?v=33-translation-first-collapse"></script>
 </body>
 </html>
