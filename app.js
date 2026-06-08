@@ -138,8 +138,8 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v33-translation-first-collapse";
-  console.log("Lyrics English v33-translation-first-collapse loaded");
+  window.LYRICS_ENGLISH_VERSION = "v34-duplicate-guard-savefix";
+  console.log("Lyrics English v34-duplicate-guard-savefix loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
@@ -1797,8 +1797,32 @@ function prepositionText(line) {
   return prep.length ? prep.map(p => notes[p] || `${p}: 前後の単語をつなぎ、場所・方向・関係などを表します。`).join("\n") : "この行では目立つ前置詞はありません。";
 }
 
+
+function normalizeSongIdentity(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFKC")
+    .replace(/[’‘`´]/g, "'")
+    .replace(/\b(?:official|music\s*video|audio|lyrics?|hd|4k|mv)\b/gi, "")
+    .replace(/\s*\([^)]*(?:official|music\s*video|audio|lyrics?|hd|4k|mv)[^)]*\)\s*/gi, " ")
+    .replace(/\s*\[[^\]]*(?:official|music\s*video|audio|lyrics?|hd|4k|mv)[^\]]*\]\s*/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findDuplicateSongByTitleArtist(title, artistName, ignoreId = "") {
+  const titleKey = normalizeSongIdentity(title);
+  const artistKey = normalizeSongIdentity(artistName);
+  if (!titleKey || !artistKey) return null;
+
+  return (songs || []).find(song => {
+    if (!song || String(song.id || "") === String(ignoreId || "")) return false;
+    return normalizeSongIdentity(song.title) === titleKey && normalizeSongIdentity(song.artist_name) === artistKey;
+  }) || null;
+}
+
 async function saveSong() {
-  const id = qs("#editId").value || crypto.randomUUID();
+  const editId = qs("#editId").value || "";
   const raw = normalizeLyricsText(qs("#lyricsRaw").value.trim());
   qs("#lyricsRaw").value = raw;
   const title = qs("#songTitle").value.trim();
@@ -1809,7 +1833,15 @@ async function saveSong() {
     return;
   }
 
-  const existing = songs.find(s => s.id === id);
+  const duplicate = findDuplicateSongByTitleArtist(title, artistName, editId);
+  const existing = editId
+    ? (songs || []).find(s => String(s.id) === String(editId))
+    : duplicate;
+  const id = existing?.id || editId || crypto.randomUUID();
+
+  if (!editId && duplicate) {
+    toast("同じ曲が既にあるため、新規追加ではなく既存曲を更新します");
+  }
   const manualText = qs("#manualAnalysis")?.value?.trim() || "";
   const manualLines = parseManualAnalysis(manualText);
   if (manualLines.length) {
@@ -1961,6 +1993,11 @@ async function upsertSongSafely(originalPayload) {
     youtube_url: originalPayload.youtube_url,
     lyrics_raw: originalPayload.lyrics_raw,
     lyric_lines: originalPayload.lyric_lines,
+    manual_analysis: originalPayload.manual_analysis,
+    genre: originalPayload.genre,
+    difficulty: originalPayload.difficulty,
+    updated_by: originalPayload.updated_by,
+    created_by: originalPayload.created_by,
     updated_at: originalPayload.updated_at
   };
 
