@@ -30,7 +30,7 @@ const LEARNING_WORDS = new Set([
   "remember", "memory", "memories", "moment", "alone", "hurt", "break", "swim", "thrown", "infinity", "erase", "storm",
   "leader", "whole", "pack", "beat", "sticks", "stones", "river", "lost", "open", "dark", "lover", "dancing",
   "blackhole", "black", "hole", "architect", "architects", "modern", "misery", "mortal", "ashes", "surrender", "fragile", "hollow", "regret", "anxiety", "pretend",
-  // v43: 詳細ページの文法表示元を修正。保存済みmanual_analysisを優先し、解析状態を表示。
+  // v44: 編集プレビューと詳細表示の解析ロジックを統一。manual_analysisから行別文法を再紐付け。
   "fear", "tears", "tear", "blood", "bleed", "breath", "breathe", "drown", "drowning", "sink", "sinking", "rise", "burn", "burning", "buried",
   "alive", "dead", "ghost", "shadow", "heaven", "hell", "soul", "heart", "mind", "dream", "nightmare", "silence", "scream", "whisper",
   "chaos", "enemy", "denial", "truth", "trust", "faith", "blame", "shame", "guilt", "numb", "escape", "fall", "fallen", "apart",
@@ -204,8 +204,8 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v43-detail-display-source-fix";
-  console.log("Lyrics English v39-word-data-popup-sync loaded");
+  window.LYRICS_ENGLISH_VERSION = "v44-preview-detail-grammar-sync";
+  console.log("Lyrics English v44-preview-detail-grammar-sync loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
@@ -445,7 +445,8 @@ function openSong(id) {
   const rawForManual = (s.lyrics_raw && String(s.lyrics_raw).trim())
     ? s.lyrics_raw
     : storedLyricLines.map(l => l?.lyric || "").filter(Boolean).join("\n");
-  const manualDetailLines = parseManualAnalysisForRaw(s.manual_analysis || "", rawForManual);
+  const parsedManualDetailLines = parseManualAnalysisForRaw(s.manual_analysis || "", rawForManual);
+  const manualDetailLines = hydrateDetailLinesFromManualAnalysis(parsedManualDetailLines, s, rawForManual);
   const displaySource = manualDetailLines.length ? "manual_analysis" : (storedLyricLines.length ? "lyric_lines" : "none");
   const baseLines = manualDetailLines.length
     ? manualDetailLines
@@ -3219,6 +3220,75 @@ function grammarNotes(line, points) {
 
 // v41: 手動解析の保存後反映を強化。
 // 目的: 過去曲に古い lyric_lines が残っていても、manual_analysis と word_data を優先して詳細表示へ反映する。
+
+// v44: 詳細ページの行別文法を、編集プレビューと同じ manual_analysis から強制的に補完する。
+// 目的: Supabaseには文法が保存されているのに、詳細ページだけ「未取得」になる問題を防ぐ。
+function hydrateDetailLinesFromManualAnalysis(lines, song, rawLyrics) {
+  const manualText = String(song?.manual_analysis || "");
+  const storedLines = Array.isArray(song?.lyric_lines) ? song.lyric_lines : [];
+  const lyricsFromRaw = splitLyricsLines(normalizeLyricsText(rawLyrics || "")).map(x => x.trim()).filter(Boolean);
+  const sourceLines = (Array.isArray(lines) && lines.length)
+    ? lines
+    : lyricsFromRaw.map((lyric, i) => buildManualLine(i + 1, lyric, "", [], wordsForLyricFromManual(lyric, collectManualWordData(manualText, rawLyrics)), []));
+
+  if (!manualText || !sourceLines.length) return sourceLines;
+
+  const globalGrammarNotes = extractAllGrammarNotesFromManualText(manualText);
+  const grammarValues = extractRepeatedSectionValues(manualText, ["文法ポイント", "使われている文法", "文法", "文法解説"]);
+  const storedNotesByLyric = new Map();
+  storedLines.forEach((stored, i) => {
+    const lyric = String(stored?.lyric || "").trim();
+    if (!lyric) return;
+    const normalized = normalizeLyricLine(lyric).toLowerCase();
+    const g = normalizeAnalysisLine(stored);
+    const notes = Array.isArray(g?.notes) ? g.notes.filter(isRealGrammarNote) : [];
+    if (notes.length) storedNotesByLyric.set(normalized, notes);
+  });
+
+  return sourceLines.map((line, index) => {
+    const lyric = String(line?.lyric || lyricsFromRaw[index] || "").trim();
+    const normalized = normalizeLyricLine(lyric).toLowerCase();
+    const g = normalizeAnalysisLine(line);
+    let notes = Array.isArray(g?.notes) ? g.notes.filter(isRealGrammarNote) : [];
+
+    // 1. その行自身の文法
+    // 2. 同じ歌詞で保存されているlyric_linesの実文法
+    // 3. manual_analysis内の同じ順番の文法ブロック
+    // 4. manual_analysis全体から歌詞語句と一致する文法
+    // 5. それでも無い場合のみ、近い順番の文法を補助表示
+    if (!notes.length && storedNotesByLyric.has(normalized)) {
+      notes = storedNotesByLyric.get(normalized);
+    }
+    if (!notes.length && pickIndexedValue(grammarValues, index)) {
+      notes = parseManualGrammarNotes(pickIndexedValue(grammarValues, index));
+    }
+    if (!notes.length) {
+      notes = grammarNotesForLyricFromManual(lyric, globalGrammarNotes);
+    }
+    if (!notes.length && globalGrammarNotes.length) {
+      const perLine = Math.max(1, Math.ceil(globalGrammarNotes.length / Math.max(sourceLines.length, 1)));
+      const start = Math.min(index * perLine, Math.max(globalGrammarNotes.length - 1, 0));
+      notes = globalGrammarNotes.slice(start, start + Math.min(perLine, 3)).filter(isRealGrammarNote);
+    }
+
+    const mergedWords = mergeManualWordLists(
+      Array.isArray(g?.words) ? g.words : [],
+      wordsForLyricFromManual(lyric, collectManualWordData(manualText, rawLyrics))
+    );
+    const translation = cleanTranslation(line?.translation || g?.translation, lyric) || pickIndexedValue(extractRepeatedSectionValues(manualText, ["自然な和訳", "和訳", "日本語訳", "自然な日本語訳"]), index);
+    const examples = Array.isArray(g?.examples) ? g.examples : examplesForLyricFromManual(lyric, parseBulletLines(extractManualSectionFromText(manualText, ["例文", "類似例文"])));
+
+    return buildManualLine(
+      Number(line?.line_no) || index + 1,
+      lyric,
+      translation,
+      [...new Set((notes || []).filter(isRealGrammarNote))].slice(0, 5),
+      mergedWords,
+      examples
+    );
+  }).filter(l => l.lyric);
+}
+
 function parseManualAnalysisForRaw(text, rawLyrics) {
   const previous = window.__lyricsEnglishManualParseRaw;
   window.__lyricsEnglishManualParseRaw = rawLyrics || "";
