@@ -17,7 +17,8 @@ let currentUtterance = null;
 let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
-const APP_PATCH_VERSION = "v33-translation-first-collapse";
+let currentDifficultyReason = "";
+const APP_PATCH_VERSION = "v35-genre-difficulty";
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
 const COMMON_PASSWORD = "12345";
@@ -396,7 +397,9 @@ function openSong(id) {
           <div class="song-meta-tags">
             <span class="tag">ジャンル: ${esc(s.genre || "未設定")}</span>
             <span class="tag">難易度: ${esc(s.difficulty || "初級")}</span>
+            ${s.difficulty_reason ? `<span class="tag">理由あり</span>` : ""}
           </div>
+          ${s.difficulty_reason ? `<p class="mini"><b>難易度理由：</b>${esc(s.difficulty_reason)}</p>` : ""}
           <p>${esc(getDisplayArtistProfile(s))}</p>
           <div class="actions media-actions">
             ${s.youtube_url ? `<a class="btn" href="${escAttr(s.youtube_url)}" target="_blank" rel="noopener">YouTube</a>` : `<button class="btn secondary" disabled>YouTube未登録</button>`}
@@ -1054,6 +1057,7 @@ function buildChatGPTPrompt(title, artist, lyrics) {
 ・自然な日本語訳を作る
 ・使われている文法を短く説明する
 ・各英文ごとに、英検準2級以上を目安に学習価値の高い重要単語だけを1〜5個選び、意味、使い方、例文を必ず出す
+・曲全体のジャンル候補、英語学習としての難易度、難易度理由を必ず出す
 ・初心者にもわかるようにする
 ・説明は長すぎず、アプリに表示しやすい形にする
 
@@ -1069,6 +1073,14 @@ ${lyrics || "未入力"}
 出力ルール：
 1行ごとに解析してください。
 説明は以下の形式にしてください。
+
+【曲の学習情報】
+ジャンル候補：Post-hardcore / Alternative rock など
+難易度：初級 / 中級 / 上級
+難易度理由：
+・理由1
+・理由2
+・理由3
 
 【英文】
 原文の1行
@@ -1101,6 +1113,8 @@ example_ja: 例文の日本語訳
 ・主語、動詞、目的語のような説明は必要な場合だけにしてください
 ・不定詞、動名詞、現在分詞、前置詞、熟語など、実際に使われている文法を優先してください
 ・直訳ではなく、歌詞として自然な日本語にしてください
+・【曲の学習情報】は必ず最初に1回だけ書いてください。ジャンル候補、難易度、難易度理由を省略しないでください
+・難易度は、初級=日常単語が多く文法がシンプル、中級=比喩・口語・不定詞/動名詞/現在分詞などがある、上級=抽象表現・スラング・省略・倒置・文化背景が多い、の基準で判定してください
 ・【単語の意味】は英検準2級以上を目安に、学習価値の高い単語だけを書いてください。the / you / said / like / I などの基本語は原則除外してください
 ・【単語データ】は必ず word / meaning / usage / example / example_ja の5項目で書いてください。基本語ではなく、英検準2級以上を目安にした重要単語だけにしてください
 ・アプリは【単語データ】を優先して読み取るため、単語ごとに必ず1セットずつ出してください
@@ -1244,8 +1258,10 @@ async function analyzeLyrics() {
   qs("#lyricsLinksBox").innerHTML = "";
 
   const manualText = qs("#manualAnalysis")?.value?.trim() || "";
+  const learningInfo = applyLearningInfoToForm(manualText);
   const manualLines = parseManualAnalysis(manualText);
   if (manualLines.length) {
+    applyLearningInfoToForm(manualText);
     currentAnalysis = manualLines;
     qs("#analysisPreview").innerHTML = currentAnalysis.map(l => lineHtml(l, "preview", "", "")).join("");
     toast("ChatGPT解析結果を分析レビューに反映しました");
@@ -1843,8 +1859,10 @@ async function saveSong() {
     toast("同じ曲が既にあるため、新規追加ではなく既存曲を更新します");
   }
   const manualText = qs("#manualAnalysis")?.value?.trim() || "";
+  const learningInfo = applyLearningInfoToForm(manualText);
   const manualLines = parseManualAnalysis(manualText);
   if (manualLines.length) {
+    applyLearningInfoToForm(manualText);
     currentAnalysis = manualLines;
     qs("#analysisPreview").innerHTML = currentAnalysis.map(l => lineHtml(l, "preview", "", "")).join("");
   }
@@ -1872,8 +1890,9 @@ async function saveSong() {
     apple_music_url: qs("#appleUrl").value.trim(),
     spotify_url: qs("#spotifyUrl").value.trim(),
     cover_art_url: qs("#coverArtUrl").value.trim(),
-    genre: qs("#genre").value.trim(),
-    difficulty: qs("#difficulty").value,
+    genre: (learningInfo.genre || qs("#genre").value || "").trim(),
+    difficulty: learningInfo.difficulty || qs("#difficulty").value,
+    difficulty_reason: learningInfo.difficulty_reason || currentDifficultyReason || "",
     artist_profile: getJapaneseArtistProfile(artistName, qs("#artistProfile").value.trim()),
     manual_analysis: qs("#manualAnalysis")?.value?.trim() || "",
     lyrics_raw: raw,
@@ -1895,6 +1914,7 @@ async function saveSong() {
     lyrics_links: makeLyricsSearchLinks(title, artistName),
     genre: draftBackup.genre,
     difficulty: draftBackup.difficulty,
+    difficulty_reason: draftBackup.difficulty_reason,
     artist_profile: draftBackup.artist_profile,
     manual_analysis: draftBackup.manual_analysis,
     lyrics_raw: raw,
@@ -1956,6 +1976,7 @@ async function upsertSongSafely(originalPayload) {
     "manual_analysis",
     "genre",
     "difficulty",
+    "difficulty_reason",
     "updated_by",
     "created_by",
     "updated_at"
@@ -1996,6 +2017,7 @@ async function upsertSongSafely(originalPayload) {
     manual_analysis: originalPayload.manual_analysis,
     genre: originalPayload.genre,
     difficulty: originalPayload.difficulty,
+    difficulty_reason: originalPayload.difficulty_reason,
     updated_by: originalPayload.updated_by,
     created_by: originalPayload.created_by,
     updated_at: originalPayload.updated_at
@@ -2035,6 +2057,7 @@ function editSong(id) {
   createLyricsLinksFromForm(false);
   qs("#genre").value = s.genre || "";
   qs("#difficulty").value = s.difficulty || "初級";
+  currentDifficultyReason = s.difficulty_reason || "";
   qs("#artistProfile").value = getJapaneseArtistProfile(s.artist_name || "このアーティスト", s.artist_profile || "");
   qs("#manualAnalysis").value = s.manual_analysis || "";
   qs("#chatgptPrompt").value = buildChatGPTPrompt(s.title || "", s.artist_name || "", s.lyrics_raw || "");
@@ -2367,6 +2390,57 @@ function dictionaryUrl(word) { return `https://ejje.weblio.jp/content/${encodeUR
 function esc(s) { return String(s ?? "").replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[m])); }
 function nl(s) { return esc(s).replace(/\n/g, "<br>"); }
 function escAttr(s) { return esc(s).replace(/\n/g, " "); }
+
+// v35: ChatGPT手動解析からジャンル・難易度・難易度理由を読み取る。
+function extractLearningInfoFromManual(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return { genre: "", difficulty: "", difficulty_reason: "" };
+  const section = extractManualSectionFromText(raw, ["曲の学習情報", "学習情報", "曲情報", "難易度", "ジャンル"])
+    || raw.slice(0, 1200);
+  const pick = (labels) => {
+    for (const label of labels) {
+      const re = new RegExp(`${escapeRegExp(label)}\\s*[：:]\\s*([^\\n]+)`, "i");
+      const m = re.exec(section) || re.exec(raw);
+      if (m?.[1]) return m[1].trim();
+    }
+    return "";
+  };
+  const genre = cleanLearningInfoValue(pick(["ジャンル候補", "ジャンル", "genre", "Genre"]));
+  let difficulty = cleanLearningInfoValue(pick(["難易度", "difficulty", "Difficulty"]));
+  if (/初級/.test(difficulty)) difficulty = "初級";
+  else if (/中級/.test(difficulty)) difficulty = "中級";
+  else if (/上級/.test(difficulty)) difficulty = "上級";
+  else difficulty = "";
+
+  let reason = "";
+  const reasonMatch = /(?:難易度理由|理由|difficulty_reason|reason)\s*[：:]\s*([\s\S]*?)(?=\n【|\n\s*(?:ジャンル候補|ジャンル|難易度)\s*[：:]|$)/i.exec(section)
+    || /(?:難易度理由|理由|difficulty_reason|reason)\s*[：:]\s*([\s\S]*?)(?=\n【|$)/i.exec(raw);
+  if (reasonMatch?.[1]) {
+    reason = reasonMatch[1]
+      .split("\n")
+      .map(x => x.replace(/^[-・*]\s*/, "").trim())
+      .filter(Boolean)
+      .slice(0, 4)
+      .join(" / ");
+  }
+  return { genre, difficulty, difficulty_reason: reason };
+}
+
+function cleanLearningInfoValue(value) {
+  return String(value || "")
+    .replace(/^[-・*]\s*/, "")
+    .replace(/[。.]$/, "")
+    .trim();
+}
+
+function applyLearningInfoToForm(manualText) {
+  const info = extractLearningInfoFromManual(manualText);
+  if (info.genre && qs("#genre")) qs("#genre").value = info.genre;
+  if (info.difficulty && qs("#difficulty")) qs("#difficulty").value = info.difficulty;
+  if (info.difficulty_reason) currentDifficultyReason = info.difficulty_reason;
+  return info;
+}
+
 function fmt(s) { return s ? new Date(s).toLocaleString() : ""; }
 
 
