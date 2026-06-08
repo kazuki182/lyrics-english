@@ -30,7 +30,7 @@ const LEARNING_WORDS = new Set([
   "remember", "memory", "memories", "moment", "alone", "hurt", "break", "swim", "thrown", "infinity", "erase", "storm",
   "leader", "whole", "pack", "beat", "sticks", "stones", "river", "lost", "open", "dark", "lover", "dancing",
   "blackhole", "black", "hole", "architect", "architects", "modern", "misery", "mortal", "ashes", "surrender", "fragile", "hollow", "regret", "anxiety", "pretend",
-  // v40: v39のword_data反映を維持し、ChatGPT手動解析の文法ポイント表示を復旧。
+  // v41: 保存後に手動解析を詳細ページへ再反映。古いlyric_linesよりmanual_analysis/word_dataを優先。
   "fear", "tears", "tear", "blood", "bleed", "breath", "breathe", "drown", "drowning", "sink", "sinking", "rise", "burn", "burning", "buried",
   "alive", "dead", "ghost", "shadow", "heaven", "hell", "soul", "heart", "mind", "dream", "nightmare", "silence", "scream", "whisper",
   "chaos", "enemy", "denial", "truth", "trust", "faith", "blame", "shame", "guilt", "numb", "escape", "fall", "fallen", "apart",
@@ -204,7 +204,7 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v40-grammar-restore-word-data";
+  window.LYRICS_ENGLISH_VERSION = "v41-manual-analysis-resync";
   console.log("Lyrics English v39-word-data-popup-sync loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
@@ -441,7 +441,7 @@ function songListItem(s) {
 function openSong(id) {
   const s = songs.find(x => x.id === id);
   if (!s) return;
-  const manualDetailLines = parseManualAnalysis(s.manual_analysis || "");
+  const manualDetailLines = parseManualAnalysisForRaw(s.manual_analysis || "", s.lyrics_raw || "");
   const baseLines = manualDetailLines.length
     ? manualDetailLines
     : Array.isArray(s.lyric_lines) ? s.lyric_lines.map((line, i) => normalizeAIAnalysisLine(line, i)) : [];
@@ -1518,7 +1518,7 @@ async function analyzeLyrics() {
   const manualText = qs("#manualAnalysis")?.value?.trim() || "";
   const learningInfo = applyLearningInfoToForm(manualText);
   const manualWordData = collectManualWordData(manualText, raw);
-  const manualLines = parseManualAnalysis(manualText);
+  const manualLines = parseManualAnalysisForRaw(manualText, raw);
   if (manualLines.length) {
     applyLearningInfoToForm(manualText);
     currentAnalysis = manualLines;
@@ -2140,7 +2140,7 @@ async function saveSong() {
   const manualText = qs("#manualAnalysis")?.value?.trim() || "";
   const learningInfo = applyLearningInfoToForm(manualText);
   const manualWordData = collectManualWordData(manualText, raw);
-  const manualLines = parseManualAnalysis(manualText);
+  const manualLines = parseManualAnalysisForRaw(manualText, raw);
   if (manualLines.length) {
     applyLearningInfoToForm(manualText);
     currentAnalysis = manualLines;
@@ -2371,7 +2371,7 @@ async function refreshSongAnalysis(id) {
   let lines = [];
   let usedManual = false;
   let usedAI = true;
-  const manualLines = parseManualAnalysis(song.manual_analysis || "");
+  const manualLines = parseManualAnalysisForRaw(song.manual_analysis || "", raw);
   if (manualLines.length) {
     lines = manualLines;
     usedManual = true;
@@ -3123,6 +3123,121 @@ function grammarNotes(line, points) {
   if (/\b(in|on|at|for|to|with|from|of|by|about|into|over|under)\b/i.test(normalized)) notes.push("前置詞: 名詞との関係をつなぎ、場所・方向・原因などを表します。");
 
   return [...new Set(notes)].filter(isRealGrammarNote).slice(0, 4);
+}
+
+
+// v41: 手動解析の保存後反映を強化。
+// 目的: 過去曲に古い lyric_lines が残っていても、manual_analysis と word_data を優先して詳細表示へ反映する。
+function parseManualAnalysisForRaw(text, rawLyrics) {
+  const previous = window.__lyricsEnglishManualParseRaw;
+  window.__lyricsEnglishManualParseRaw = rawLyrics || "";
+  try {
+    return parseManualAnalysis(text);
+  } finally {
+    window.__lyricsEnglishManualParseRaw = previous || "";
+  }
+}
+
+function getManualParseLyricsLines() {
+  const rawFromContext = window.__lyricsEnglishManualParseRaw || "";
+  const rawFromForm = (typeof qs === "function" && qs("#lyricsRaw")) ? qs("#lyricsRaw").value : "";
+  return splitLyricsLines(normalizeLyricsText(rawFromContext || rawFromForm || ""))
+    .map(x => x.trim())
+    .filter(Boolean);
+}
+
+function pickIndexedValue(values, index) {
+  return Array.isArray(values) && values[index] ? values[index] : "";
+}
+
+function ensureLineGrammarNotes(lyric, notes, grammarValues, index, globalGrammarNotes) {
+  let out = Array.isArray(notes) ? notes.filter(isRealGrammarNote) : [];
+  if (!out.length && pickIndexedValue(grammarValues, index)) {
+    out = parseManualGrammarNotes(pickIndexedValue(grammarValues, index));
+  }
+  if (!out.length) out = grammarNotesForLyricFromManual(lyric, globalGrammarNotes);
+  if (!out.length) out = grammarNotes(lyric, []);
+  return [...new Set(out.filter(isRealGrammarNote))].slice(0, 5);
+}
+
+function parseManualAnalysis(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return [];
+
+  const normalized = raw.replace(/\r\n/g, "\n");
+  const lyricsFromSong = getManualParseLyricsLines();
+  const globalWords = parseManualWords(
+    extractManualSectionFromText(normalized, ["単語データ", "word data", "vocabulary data"]) ||
+    extractManualSectionFromText(normalized, ["単語の意味", "重要単語", "単語", "語彙"])
+  );
+  const globalExamples = parseBulletLines(
+    extractManualSectionFromText(normalized, ["例文", "類似例文"])
+  ).map(x => x.replace(/^・\s*/, "").trim()).filter(Boolean);
+  const globalGrammarNotes = extractAllGrammarNotesFromManualText(normalized);
+  const translations = extractRepeatedSectionValues(normalized, ["自然な和訳", "和訳", "日本語訳", "自然な日本語訳"]);
+  const grammarValues = extractRepeatedSectionValues(normalized, ["文法ポイント", "使われている文法", "文法", "文法解説"]);
+
+  const blocks = normalized
+    .split(/(?=【(?:英文|英語|原文)】)/g)
+    .map(b => b.trim())
+    .filter(b => /【(?:英文|英語|原文)】/.test(b));
+
+  let lines = [];
+
+  if (blocks.length) {
+    blocks.forEach((block, index) => {
+      const lyricFromBlock = firstMeaningfulLine(extractManualSectionFromText(block, ["英文", "英語", "原文"]));
+      const lyric = lyricFromBlock || lyricsFromSong[index] || "";
+      if (!lyric) return;
+      const translation = firstMeaningfulLine(extractManualSectionFromText(block, ["自然な和訳", "和訳", "日本語訳", "自然な日本語訳"])) || pickIndexedValue(translations, index);
+      const grammarText = extractManualSectionFromText(block, ["文法ポイント", "使われている文法", "文法", "文法解説"]);
+      const localWordsText = extractManualSectionFromText(block, ["単語データ", "word data", "vocabulary data"]) ||
+        extractManualSectionFromText(block, ["単語の意味", "重要単語", "単語", "語彙"]);
+      const localWords = parseManualWords(localWordsText);
+      const wordItems = mergeManualWordLists(localWords, wordsForLyricFromManual(lyric, globalWords));
+      const notes = ensureLineGrammarNotes(lyric, parseManualGrammarNotes(grammarText), grammarValues, index, globalGrammarNotes);
+      const examples = parseBulletLines(extractManualSectionFromText(block, ["例文", "類似例文"]))
+        .map(item => item.replace(/^・\s*/, "").trim())
+        .filter(Boolean);
+      lines.push(buildManualLine(index + 1, lyric, translation, notes, wordItems, examples.length ? examples : examplesForLyricFromManual(lyric, globalExamples)));
+    });
+  }
+
+  // 回答に【英文】ブロックが無い、または一部の行しか取れない場合は、歌詞欄の行を基準に再構成する。
+  if (!lines.length && lyricsFromSong.length) {
+    lines = lyricsFromSong.map((lyric, index) => {
+      const wordItems = wordsForLyricFromManual(lyric, globalWords);
+      const notes = ensureLineGrammarNotes(lyric, [], grammarValues, index, globalGrammarNotes);
+      return buildManualLine(index + 1, lyric, pickIndexedValue(translations, index), notes, wordItems, examplesForLyricFromManual(lyric, globalExamples));
+    });
+  }
+
+  // 古いキャッシュ対策: 歌詞欄の行数と解析行数がズレている場合、歌詞欄を正として不足行を補う。
+  if (lyricsFromSong.length && lines.length < lyricsFromSong.length) {
+    const byLyric = new Map(lines.map(line => [normalizeLyricLine(line.lyric).toLowerCase(), line]));
+    lines = lyricsFromSong.map((lyric, index) => {
+      const existing = byLyric.get(normalizeLyricLine(lyric).toLowerCase());
+      if (existing) return { ...existing, line_no: index + 1 };
+      const wordItems = wordsForLyricFromManual(lyric, globalWords);
+      const notes = ensureLineGrammarNotes(lyric, [], grammarValues, index, globalGrammarNotes);
+      return buildManualLine(index + 1, lyric, pickIndexedValue(translations, index), notes, wordItems, examplesForLyricFromManual(lyric, globalExamples));
+    });
+  }
+
+  return lines.map((line, index) => {
+    const lyric = String(line.lyric || "");
+    const currentWords = Array.isArray(line.grammar?.words) ? line.grammar.words : [];
+    const mergedWords = mergeManualWordLists(currentWords, wordsForLyricFromManual(lyric, globalWords));
+    const notes = ensureLineGrammarNotes(lyric, Array.isArray(line.grammar?.notes) ? line.grammar.notes : [], grammarValues, index, globalGrammarNotes);
+    return buildManualLine(
+      Number(line.line_no) || index + 1,
+      lyric,
+      line.translation || pickIndexedValue(translations, index),
+      notes,
+      mergedWords,
+      Array.isArray(line.grammar?.examples) ? line.grammar.examples : examplesForLyricFromManual(lyric, globalExamples)
+    );
+  }).filter(l => l.lyric);
 }
 
 })();
