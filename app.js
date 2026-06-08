@@ -18,7 +18,7 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v38-word-popup-broad";
+const APP_PATCH_VERSION = "v39-word-data-popup-sync";
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
 const COMMON_PASSWORD = "12345";
@@ -30,7 +30,7 @@ const LEARNING_WORDS = new Set([
   "remember", "memory", "memories", "moment", "alone", "hurt", "break", "swim", "thrown", "infinity", "erase", "storm",
   "leader", "whole", "pack", "beat", "sticks", "stones", "river", "lost", "open", "dark", "lover", "dancing",
   "blackhole", "black", "hole", "architect", "architects", "modern", "misery", "mortal", "ashes", "surrender", "fragile", "hollow", "regret", "anxiety", "pretend",
-  // v38: 単語ポップアップ対象を拡大。英検3級〜準2級目安 + 歌詞理解に重要な感情・比喩・熟語系の語。
+  // v39: ChatGPT手動解析の単語データをword_dataへ保存し、歌詞ポップアップへ優先反映。
   "fear", "tears", "tear", "blood", "bleed", "breath", "breathe", "drown", "drowning", "sink", "sinking", "rise", "burn", "burning", "buried",
   "alive", "dead", "ghost", "shadow", "heaven", "hell", "soul", "heart", "mind", "dream", "nightmare", "silence", "scream", "whisper",
   "chaos", "enemy", "denial", "truth", "trust", "faith", "blame", "shame", "guilt", "numb", "escape", "fall", "fallen", "apart",
@@ -204,8 +204,8 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v38-word-popup-broad";
-  console.log("Lyrics English v38-word-popup-broad loaded");
+  window.LYRICS_ENGLISH_VERSION = "v39-word-data-popup-sync";
+  console.log("Lyrics English v39-word-data-popup-sync loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
@@ -261,7 +261,7 @@ function handleDelegatedClick(e) {
   }
   const word = e.target.closest("[data-word]");
   if (word) {
-    openWordModal(word.dataset.word, word.dataset.songId, Number(word.dataset.lineNo), word.dataset.songTitle, word.dataset.artistName);
+    openWordModal(word.dataset.word, word.dataset.songId, Number(word.dataset.lineNo), word.dataset.songTitle, word.dataset.artistName, word.dataset);
   }
 }
 
@@ -442,9 +442,11 @@ function openSong(id) {
   const s = songs.find(x => x.id === id);
   if (!s) return;
   const manualDetailLines = parseManualAnalysis(s.manual_analysis || "");
-  const lines = manualDetailLines.length
+  const baseLines = manualDetailLines.length
     ? manualDetailLines
     : Array.isArray(s.lyric_lines) ? s.lyric_lines.map((line, i) => normalizeAIAnalysisLine(line, i)) : [];
+  const songWordData = getSongWordData(s);
+  const lines = enrichLinesWithSongWordData(baseLines, songWordData);
   const youtubeThumb = getYoutubeThumbnail(s.youtube_url);
   const spotifyUrl = resolveSpotifyUrl(s);
   const lyricLinks = normalizeLyricsLinks(s.lyrics_links || makeLyricsSearchLinks(s.title, s.artist_name));
@@ -591,7 +593,7 @@ function lineHtml(line, songId, songTitle, artistName) {
   const g = normalizeAnalysisLine(line);
   const translation = g.translation || translateLine(lyric);
   const notes = (g.notes && g.notes.length ? g.notes : grammarNotes(lyric, g.points || [])).slice(0, 5);
-  const words = mergeLineWords(lyric, g.words).slice(0, 10);
+  const words = mergeLineWords(lyric, g.words).slice(0, 20);
   const examples = (g.examples && g.examples.length ? g.examples : similarExamples(lyric)).slice(0, 3);
   return `<div class="lyrics-line lyrics-line-simple">
     <div class="en">${wordify(lyric, songId, line.line_no, songTitle, artistName, words)}</div>
@@ -618,19 +620,53 @@ function lineHtml(line, songId, songTitle, artistName) {
 }
 
 function wordify(text, songId, lineNo, songTitle, artistName, wordItems = []) {
-  const wordMap = new Map((wordItems || []).map(item => [normalizeWord(item.word || ""), item]));
+  const wordMap = buildWordLookupMap(wordItems);
   return tokenizePreservingSpace(text).map(part => {
     if (/^[A-Za-z][A-Za-z'’]*$/.test(part)) {
       const clean = normalizeWord(part);
-      const item = wordMap.get(clean) || {};
-      const hasAnalysisWord = wordMap.has(clean) && item.meaning;
+      const item = lookupWordItemForToken(wordMap, clean) || {};
+      const hasAnalysisWord = Boolean(item.meaning);
       if (!hasAnalysisWord && !isLearningVocabularyWord(clean)) {
         return `<span class="word plain-word">${esc(part)}</span>`;
       }
-      return `<span class="word" tabindex="0" data-word="${escAttr(clean)}" data-song-id="${escAttr(songId)}" data-line-no="${lineNo}" data-song-title="${escAttr(songTitle || "")}" data-artist-name="${escAttr(artistName || "")}" data-meaning="${escAttr(item.meaning || "")}" data-usage="${escAttr(item.usage || "")}" data-example="${escAttr(item.example || "")}" data-example-ja="${escAttr(item.example_ja || item.ja || "")}">${esc(part)}</span>`;
+      return `<span class="word" tabindex="0" data-word="${escAttr(item.word || clean)}" data-token="${escAttr(clean)}" data-song-id="${escAttr(songId)}" data-line-no="${lineNo}" data-song-title="${escAttr(songTitle || "")}" data-artist-name="${escAttr(artistName || "")}" data-meaning="${escAttr(item.meaning || "")}" data-usage="${escAttr(item.usage || "")}" data-example="${escAttr(item.example || "")}" data-example-ja="${escAttr(item.example_ja || item.ja || "")}">${esc(part)}</span>`;
     }
     return esc(part);
   }).join("");
+}
+
+function buildWordLookupMap(wordItems = []) {
+  const map = new Map();
+  (Array.isArray(wordItems) ? wordItems : []).forEach(item => {
+    const base = normalizeWord(item?.word || "");
+    if (!base || !item?.meaning) return;
+    expandWordVariants(base).forEach(key => { if (key && !map.has(key)) map.set(key, { ...item, word: base }); });
+    (item.tokens || []).forEach(token => {
+      const clean = normalizeWord(token);
+      expandWordVariants(clean).forEach(key => { if (key && !map.has(key)) map.set(key, { ...item, word: clean }); });
+    });
+  });
+  return map;
+}
+
+function lookupWordItemForToken(wordMap, token) {
+  const clean = normalizeWord(token);
+  for (const key of expandWordVariants(clean)) {
+    if (wordMap.has(key)) return wordMap.get(key);
+  }
+  return null;
+}
+
+function expandWordVariants(word) {
+  const key = normalizeWord(word).replace(/'/g, "");
+  const variants = new Set([normalizeWord(word), key]);
+  if (key.endsWith("ies") && key.length > 4) variants.add(key.slice(0, -3) + "y");
+  if (key.endsWith("es") && key.length > 4) variants.add(key.slice(0, -2));
+  if (key.endsWith("s") && key.length > 3) variants.add(key.slice(0, -1));
+  if (key.endsWith("ied") && key.length > 4) variants.add(key.slice(0, -3) + "y");
+  if (key.endsWith("ed") && key.length > 4) { variants.add(key.slice(0, -2)); variants.add(key.slice(0, -1)); }
+  if (key.endsWith("ing") && key.length > 5) { variants.add(key.slice(0, -3)); variants.add(key.slice(0, -3) + "e"); }
+  return [...variants].filter(Boolean);
 }
 
 function tokenizePreservingSpace(text) {
@@ -1479,6 +1515,7 @@ async function analyzeLyrics() {
 
   const manualText = qs("#manualAnalysis")?.value?.trim() || "";
   const learningInfo = applyLearningInfoToForm(manualText);
+  const manualWordData = collectManualWordData(manualText, raw);
   const manualLines = parseManualAnalysis(manualText);
   if (manualLines.length) {
     applyLearningInfoToForm(manualText);
@@ -1631,7 +1668,10 @@ function parseManualWords(text) {
 
   function pushCurrent() {
     if (!current) return;
-    current.word = normalizeWord(current.word || "");
+    const originalWord = String(current.word || "").trim();
+    current.original_word = originalWord;
+    current.tokens = originalWord.split(/\s+|\//).map(normalizeWord).filter(t => t && !STOP_WORDS.has(t) && !BASIC_TOOLTIP_EXCLUDE.has(t));
+    current.word = normalizeWord(originalWord);
     current.meaning = String(current.meaning || "").trim();
     current.usage = String(current.usage || "").trim();
     current.example = String(current.example || "").trim();
@@ -1712,8 +1752,23 @@ function parseManualWords(text) {
 
   pushCurrent();
 
+  const expanded = [];
+  words.forEach(w => {
+    expanded.push(w);
+    if (Array.isArray(w.tokens) && w.tokens.length > 1) {
+      w.tokens.forEach(token => {
+        if (!token || STOP_WORDS.has(token) || BASIC_TOOLTIP_EXCLUDE.has(token)) return;
+        expanded.push({
+          ...w,
+          word: token,
+          meaning: `${w.original_word || w.word}: ${w.meaning}`,
+          usage: w.usage || `熟語・表現「${w.original_word || w.word}」の一部として使われています。`
+        });
+      });
+    }
+  });
   const seen = new Set();
-  return words
+  return expanded
     .map(w => ({ ...w, fromManual: true, word: normalizeWord(w.word) }))
     .filter(w => {
       if (!w.word || !w.meaning || STOP_WORDS.has(w.word) || seen.has(w.word) || (BASIC_TOOLTIP_EXCLUDE.has(w.word) && !w.usage)) return false;
@@ -2082,6 +2137,7 @@ async function saveSong() {
   }
   const manualText = qs("#manualAnalysis")?.value?.trim() || "";
   const learningInfo = applyLearningInfoToForm(manualText);
+  const manualWordData = collectManualWordData(manualText, raw);
   const manualLines = parseManualAnalysis(manualText);
   if (manualLines.length) {
     applyLearningInfoToForm(manualText);
@@ -2117,6 +2173,7 @@ async function saveSong() {
     difficulty_reason: learningInfo.difficulty_reason || currentDifficultyReason || "",
     artist_profile: getJapaneseArtistProfile(artistName, qs("#artistProfile").value.trim()),
     manual_analysis: qs("#manualAnalysis")?.value?.trim() || "",
+    word_data: manualWordData,
     lyrics_raw: raw,
     lyric_lines: lines,
     updated_at: new Date().toISOString()
@@ -2139,6 +2196,7 @@ async function saveSong() {
     difficulty_reason: draftBackup.difficulty_reason,
     artist_profile: draftBackup.artist_profile,
     manual_analysis: draftBackup.manual_analysis,
+    word_data: draftBackup.word_data,
     lyrics_raw: raw,
     lyric_lines: lines,
     created_by: existing?.created_by || currentUser,
@@ -2196,6 +2254,7 @@ async function upsertSongSafely(originalPayload) {
     "apple_music_url",
     "artist_profile",
     "manual_analysis",
+    "word_data",
     "genre",
     "difficulty",
     "difficulty_reason",
@@ -2237,6 +2296,7 @@ async function upsertSongSafely(originalPayload) {
     lyrics_raw: originalPayload.lyrics_raw,
     lyric_lines: originalPayload.lyric_lines,
     manual_analysis: originalPayload.manual_analysis,
+    word_data: originalPayload.word_data,
     genre: originalPayload.genre,
     difficulty: originalPayload.difficulty,
     difficulty_reason: originalPayload.difficulty_reason,
@@ -2456,20 +2516,28 @@ function getWordUsage(word) {
   };
 }
 
-function openWordModal(word, songId, lineNo, songTitle, artistName) {
+function openWordModal(word, songId, lineNo, songTitle, artistName, detail = {}) {
   if (songId === "preview") { toast("保存後に単語を追加できます"); return; }
   const clean = normalizeWord(word);
-  if (STOP_WORDS.has(clean) || !isLearningVocabularyWord(clean)) { toast("歌詞理解に役立つ重要単語だけを単語帳に追加できます"); return; }
+  const manualMeaning = String(detail?.meaning || "").trim();
+  if (STOP_WORDS.has(clean) || (!manualMeaning && !isLearningVocabularyWord(clean))) { toast("歌詞理解に役立つ重要単語だけを単語帳に追加できます"); return; }
   const info = getWordInfo(clean);
   const song = songs.find(s => s.id === songId);
   const line = (song?.lyric_lines || []).find(l => Number(l.line_no) === Number(lineNo));
   selectedWordContext = { word: clean, songId, lineNo, songTitle, artistName, example: line?.lyric || "" };
   qs("#modalWord").textContent = clean;
   qs("#modalInfo").textContent = `${songTitle} / ${artistName}`;
-  qs("#modalMeaning").value = info.meaning;
+  qs("#modalMeaning").value = manualMeaning || info.meaning;
   qs("#modalPos").value = info.pos;
   const usage = getWordUsage(clean);
-  qs("#modalMemo").value = `${info.memo}\n使い方: ${usage.usage}\n例文: ${usage.example}\n訳: ${usage.ja}` + (line?.lyric ? `\n歌詞: ${line.lyric}` : "");
+  const usageText = detail?.usage || usage.usage || info.memo || "";
+  const exampleText = detail?.example || usage.example || "";
+  const exampleJa = detail?.exampleJa || detail?.example_ja || usage.ja || "";
+  qs("#modalMemo").value = `${info.memo}
+使い方: ${usageText}
+例文: ${exampleText}
+訳: ${exampleJa}` + (line?.lyric ? `
+歌詞: ${line.lyric}` : "");
   qs("#modalDictLink").href = dictionaryUrl(clean);
   qs("#wordModal").style.display = "flex";
 }
@@ -2612,6 +2680,50 @@ function dictionaryUrl(word) { return `https://ejje.weblio.jp/content/${encodeUR
 function esc(s) { return String(s ?? "").replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[m])); }
 function nl(s) { return esc(s).replace(/\n/g, "<br>"); }
 function escAttr(s) { return esc(s).replace(/\n/g, " "); }
+
+function collectManualWordData(manualText, rawLyrics = "") {
+  const normalized = String(manualText || "").replace(/\r\n/g, "\n");
+  const section = extractManualSectionFromText(normalized, ["単語データ", "word data", "vocabulary data"]) ||
+    extractManualSectionFromText(normalized, ["単語の意味", "重要単語", "単語", "語彙"]);
+  const fromSection = parseManualWords(section);
+  const fromWholeText = fromSection.length ? [] : parseManualWords(normalized);
+  const fromLines = parseManualAnalysis(normalized).flatMap(line => Array.isArray(line.grammar?.words) ? line.grammar.words : []);
+  const rawWords = [...fromSection, ...fromWholeText, ...fromLines];
+  const lyricSet = new Set(getWords(rawLyrics || normalized).map(normalizeWord).flatMap(expandWordVariants));
+  const filtered = rawWords.filter(item => {
+    const word = normalizeWord(item.word);
+    if (!word || !item.meaning || STOP_WORDS.has(word) || (BASIC_TOOLTIP_EXCLUDE.has(word) && !item.usage)) return false;
+    if (!lyricSet.size) return true;
+    return expandWordVariants(word).some(v => lyricSet.has(v)) || (item.tokens || []).some(t => expandWordVariants(t).some(v => lyricSet.has(v)));
+  });
+  return mergeManualWordLists(filtered, []);
+}
+
+function getSongWordData(song) {
+  let saved = [];
+  if (Array.isArray(song?.word_data)) saved = song.word_data;
+  else if (typeof song?.word_data === "string") {
+    try { saved = JSON.parse(song.word_data); } catch (_) { saved = []; }
+  }
+  const fromManual = collectManualWordData(song?.manual_analysis || "", song?.lyrics_raw || "");
+  const fromLines = (Array.isArray(song?.lyric_lines) ? song.lyric_lines : []).flatMap(line => Array.isArray(line?.grammar?.words) ? line.grammar.words : []);
+  return mergeManualWordLists([...saved, ...fromManual, ...fromLines], []);
+}
+
+function enrichLinesWithSongWordData(lines, wordData = []) {
+  const globalWords = Array.isArray(wordData) ? wordData : [];
+  return (Array.isArray(lines) ? lines : []).map((line, index) => {
+    const normalized = normalizeAIAnalysisLine(line, index);
+    const lyric = String(normalized.lyric || "");
+    const existing = Array.isArray(normalized.grammar?.words) ? normalized.grammar.words : [];
+    const mergedWords = mergeManualWordLists(existing, wordsForLyricFromManual(lyric, globalWords));
+    return {
+      ...normalized,
+      grammar: { ...normalized.grammar, words: mergedWords },
+      vocabulary: mergedWords.map(w => `・${w.word}: ${w.meaning}`).join("\n")
+    };
+  });
+}
 
 // v35: ChatGPT手動解析からジャンル・難易度・難易度理由を読み取る。
 function extractLearningInfoFromManual(text) {
@@ -2818,8 +2930,15 @@ function getCurrentLyricsLinesForManualParse() {
 }
 
 function wordsForLyricFromManual(lyric, words) {
-  const set = new Set(getWords(lyric).map(normalizeWord));
-  return (words || []).filter(w => set.has(normalizeWord(w.word)) && !STOP_WORDS.has(normalizeWord(w.word)) && !BASIC_TOOLTIP_EXCLUDE.has(normalizeWord(w.word)));
+  const lyricWords = getWords(lyric).map(normalizeWord);
+  const set = new Set(lyricWords.flatMap(expandWordVariants));
+  return (words || []).filter(w => {
+    const word = normalizeWord(w.word);
+    if (!word || STOP_WORDS.has(word) || (BASIC_TOOLTIP_EXCLUDE.has(word) && !w.meaning)) return false;
+    if (expandWordVariants(word).some(v => set.has(v))) return true;
+    if (Array.isArray(w.tokens) && w.tokens.some(t => expandWordVariants(t).some(v => set.has(v)))) return true;
+    return false;
+  });
 }
 
 function examplesForLyricFromManual(lyric, examples) {
@@ -2831,7 +2950,7 @@ function mergeManualWordLists(a, b) {
   const map = new Map();
   [...(a || []), ...(b || [])].forEach(item => {
     const word = normalizeWord(item.word || "");
-    if (!word || !isLearningVocabularyWord(word)) return;
+    if (!word || STOP_WORDS.has(word) || (BASIC_TOOLTIP_EXCLUDE.has(word) && !item.meaning)) return;
     if (!map.has(word)) map.set(word, { ...item, word });
     else {
       const existing = map.get(word);
