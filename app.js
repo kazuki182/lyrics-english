@@ -18,7 +18,7 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v36-featuring-cleanup";
+const APP_PATCH_VERSION = "v37-artist-apple-wordfix";
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
 const COMMON_PASSWORD = "12345";
@@ -27,7 +27,8 @@ const LEARNING_WORDS = new Set([
   // 英検準2級以上を目安に、歌詞学習で優先したい単語だけを表示・登録対象にします。
   "ocean", "promise", "pain", "wolves", "throne", "scar", "wound", "shape", "build", "broke", "broken", "forgive", "reason", "fight",
   "remember", "memory", "memories", "moment", "alone", "hurt", "break", "swim", "thrown", "infinity", "erase", "storm",
-  "leader", "whole", "pack", "beat", "sticks", "stones", "river", "lost", "open", "dark", "lover", "dancing"
+  "leader", "whole", "pack", "beat", "sticks", "stones", "river", "lost", "open", "dark", "lover", "dancing",
+  "blackhole", "black", "hole", "architect", "architects", "modern", "misery", "mortal", "ashes", "surrender", "fragile", "hollow", "regret", "anxiety", "pretend"
 ]);
 
 
@@ -106,6 +107,18 @@ const WORD_DICTIONARY = {
   memories: ["思い出・記憶", "名詞", "memory の複数形。過去の記憶を表します。"],
   ocean: ["海・大洋", "名詞", "広さや深さの比喩として歌詞でよく使われます。"],
   storm: ["嵐・困難", "名詞", "感情の荒れや困難の比喩として使われます。"],
+  blackhole: ["ブラックホール・抜け出せない状態", "名詞", "強い重さ、孤独、吸い込まれるような感情の比喩として使われます。"],
+  hole: ["穴・欠けた部分", "名詞", "心の穴や空虚さの比喩として使われることがあります。"],
+  modern: ["現代の", "形容詞", "modern misery で「現代的な苦しみ」のような意味になります。"],
+  misery: ["みじめさ・苦しみ", "名詞", "強い悲しみや苦しい状態を表します。"],
+  mortal: ["死すべき・人間の", "形容詞", "mortal after all で「結局は人間にすぎない」のような意味になります。"],
+  ashes: ["灰・燃え残り", "名詞", "壊れた後に残るもの、過去の痛みの比喩として使われます。"],
+  surrender: ["降参する・身を委ねる", "動詞 / 名詞", "surrender to ... で「〜に身を委ねる・降伏する」。"],
+  fragile: ["壊れやすい・もろい", "形容詞", "感情や心の弱さを表す時にも使います。"],
+  hollow: ["空洞の・むなしい", "形容詞", "心が空っぽな感じや、意味のない状態を表します。"],
+  regret: ["後悔する・後悔", "動詞 / 名詞", "regret + 名詞 / regret -ing で「〜を後悔する」。"],
+  anxiety: ["不安・心配", "名詞", "強い心配や落ち着かない気持ちを表します。"],
+  pretend: ["ふりをする", "動詞", "pretend to do で「〜するふりをする」。"],
 };
 
 const WORD_USAGE = {
@@ -120,7 +133,15 @@ const WORD_USAGE = {
   love: { usage: "love + 人 / 物、または名詞で「愛」", example: "I love this song.", ja: "この曲が大好きです。" },
   dancing: { usage: "be dancing / enjoy dancing", example: "They are dancing together.", ja: "彼らは一緒に踊っています。" },
   dark: { usage: "in the dark", example: "We walked in the dark.", ja: "私たちは暗闇の中を歩いた。" },
-  go: { usage: "go to + 場所", example: "I go to school.", ja: "私は学校へ行きます。" }
+  go: { usage: "go to + 場所", example: "I go to school.", ja: "私は学校へ行きます。" },
+  blackhole: { usage: "a black hole / feel like a black hole", meaning: "ブラックホール・抜け出せない状態", example: "I felt like I was falling into a black hole.", ja: "ブラックホールに落ちていくように感じた。" },
+  misery: { usage: "in misery / modern misery", meaning: "みじめさ・苦しみ", example: "He lived in misery.", ja: "彼は苦しみの中で生きていた。" },
+  surrender: { usage: "surrender to + 名詞", meaning: "〜に降伏する・身を委ねる", example: "She refused to surrender to fear.", ja: "彼女は恐怖に屈することを拒んだ。" },
+  fragile: { usage: "fragile heart / fragile state", meaning: "壊れやすい・もろい", example: "Trust can be fragile.", ja: "信頼は壊れやすいことがある。" },
+  hollow: { usage: "feel hollow / hollow words", meaning: "空っぽの・むなしい", example: "His words sounded hollow.", ja: "彼の言葉はむなしく聞こえた。" },
+  regret: { usage: "regret + 名詞 / regret -ing", meaning: "後悔する・後悔", example: "I regret leaving early.", ja: "早く帰ったことを後悔している。" },
+  anxiety: { usage: "feel anxiety / anxiety about ...", meaning: "不安・心配", example: "I felt anxiety about the future.", ja: "将来に不安を感じた。" },
+  pretend: { usage: "pretend to do", meaning: "〜するふりをする", example: "Don't pretend to be okay.", ja: "大丈夫なふりをしないで。" }
 };
 
 const KNOWN_YOUTUBE = {
@@ -139,8 +160,8 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v36-featuring-cleanup";
-  console.log("Lyrics English v34-duplicate-guard-savefix loaded");
+  window.LYRICS_ENGLISH_VERSION = "v37-artist-apple-wordfix";
+  console.log("Lyrics English v37-artist-apple-wordfix loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
@@ -403,7 +424,7 @@ function openSong(id) {
           <p>${esc(getDisplayArtistProfile(s))}</p>
           <div class="actions media-actions">
             ${s.youtube_url ? `<a class="btn" href="${escAttr(s.youtube_url)}" target="_blank" rel="noopener">YouTube</a>` : `<button class="btn secondary" disabled>YouTube未登録</button>`}
-            ${s.apple_music_url ? `<a class="btn secondary" href="${escAttr(s.apple_music_url)}" target="_blank" rel="noopener">Apple Music</a>` : `<button class="btn secondary" disabled>Apple Music未登録</button>`}
+            ${resolveAppleMusicUrl(s) ? `<a class="btn secondary" href="${escAttr(resolveAppleMusicUrl(s))}" target="_blank" rel="noopener">Apple Music</a>` : `<button class="btn secondary" disabled>Apple Music未登録</button>`}
             ${spotifyUrl ? `<a class="btn secondary" href="${escAttr(spotifyUrl)}" target="_blank" rel="noopener">Spotify</a>` : `<button class="btn secondary" disabled>Spotify未登録</button>`}
             <button class="btn secondary" data-action="refresh-metadata" data-id="${escAttr(s.id)}" type="button">曲情報を更新</button>
             <button class="btn green" data-action="refresh-analysis" data-id="${escAttr(s.id)}" type="button">分析レビューを更新</button>
@@ -719,9 +740,18 @@ function applySongGuess(g) {
   if (g.featured_artist) toast(`参加アーティスト「${g.featured_artist}」は検索精度のためアーティスト欄から外しました`);
 }
 
+function normalizeArtistLookupKey(name) {
+  return String(name || "")
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/(band|music artist|musician|rock band|british band|american band)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function makeArtistProfile(artist) {
   const name = (artist || "このアーティスト").trim();
-  const key = name.toLowerCase();
+  const key = normalizeArtistLookupKey(name);
   const profiles = {
     "ed sheeran": KNOWN_YOUTUBE.JGwWNGJdvx8.profile,
     "linkin park": "Linkin Parkはアメリカ出身のロックバンドです。ロック、ヒップホップ、エレクトロニックな音を組み合わせた力強いサウンドで知られています。歌詞には不安、葛藤、孤独、前に進もうとする気持ちが多く表れ、感情表現を学ぶのに向いています。",
@@ -729,7 +759,9 @@ function makeArtistProfile(artist) {
     "rihanna": "Rihannaはバルバドス出身のシンガー、ビジネスウーマンです。ポップ、R&B、ダンスミュージックを中心に、印象的なメロディと感情表現で知られています。歌詞からは恋愛表現や日常で使いやすい英語表現を学べます。",
     "bruno mars": "Bruno Marsはアメリカ出身のシンガーソングライターです。ポップ、R&B、ファンクなどを取り入れた明るい楽曲で知られています。歌詞には恋愛、楽しさ、自信を表す表現が多く、自然な会話表現を学びやすいアーティストです。",
     "taylor swift": "Taylor Swiftはアメリカ出身のシンガーソングライターです。恋愛、成長、人間関係を物語のように描く歌詞で知られています。英語学習では、感情表現、比喩、日常会話に近いフレーズを学びやすいアーティストです。",
-    "coldplay": "Coldplayはイギリス出身のロックバンドです。美しいメロディと、希望、孤独、愛をテーマにした歌詞で知られています。比較的聞き取りやすい発音の曲も多く、英語学習にも取り入れやすいアーティストです。"
+    "coldplay": "Coldplayはイギリス出身のロックバンドです。美しいメロディと、希望、孤独、愛をテーマにした歌詞で知られています。比較的聞き取りやすい発音の曲も多く、英語学習にも取り入れやすいアーティストです。",
+    "architects": "Architectsはイギリス・ブライトン出身のメタルコア／ロックバンドです。重いサウンドと、喪失、不安、怒り、社会的テーマを含む歌詞で知られています。英語学習では、抽象表現、感情表現、比喩の読み取りを学びやすいアーティストです。",
+    "architects (british band)": "Architectsはイギリス・ブライトン出身のメタルコア／ロックバンドです。重いサウンドと、喪失、不安、怒り、社会的テーマを含む歌詞で知られています。英語学習では、抽象表現、感情表現、比喩の読み取りを学びやすいアーティストです。"
   };
   if (profiles[key]) return profiles[key];
   return `${name}は、洋楽を通じて英語表現を学ぶのに適したアーティストです。歌詞には日常的な単語、感情表現、前置詞、動詞表現が含まれるため、和訳だけでなく文法や語感も合わせて学べます。`;
@@ -768,26 +800,30 @@ async function fetchArtistInfo(artistName) {
   const rawName = (artistName || "").trim();
   if (!rawName) return null;
   const mainName = cleanMainArtistName(rawName);
+  const titleName = titleCaseArtist(mainName);
+
+  // 一般名詞にもなるバンド名は、最初から音楽系キーワード付きで検索します。
   const candidates = uniqueTextValues([
-    mainName,
-    titleCaseArtist(mainName),
     `${mainName} band`,
     `${mainName} music artist`,
     `${mainName} musician`,
     `${mainName} rock band`,
-    rawName.replace(/\s+-\s+Topic$/i, ""),
-    rawName.replace(/VEVO$/i, "")
+    `${mainName} metalcore band`,
+    `${titleName} band`,
+    `${titleName} music artist`,
+    titleName,
+    mainName
   ]);
 
   for (const lang of ["ja", "en"]) {
     for (const candidate of candidates) {
-      const summary = await fetchWikipediaSummary(candidate, lang);
-      if (!summary) continue;
+      const summary = await fetchWikipediaSummary(candidate, lang, true);
+      if (!summary || !isLikelyMusicArtistSummary(summary, mainName)) continue;
       const genreInfo = await fetchGenreInfo(summary.title || candidate, summary.extract || "");
       const isJapanese = lang === "ja" || hasJapaneseText(summary.extract || "");
       return {
         name: summary.title || candidate,
-        extract: isJapanese ? summary.extract : getJapaneseArtistProfile(summary.title || candidate, summary.extract),
+        extract: isJapanese ? summary.extract : getJapaneseArtistProfile(summary.title || mainName, summary.extract),
         image: summary.thumbnail?.source || summary.originalimage?.source || "",
         url: summary.content_urls?.desktop?.page || summary.content_urls?.mobile?.page || "",
         genre: genreInfo.genre || inferGenreFromText(summary.extract || ""),
@@ -795,10 +831,38 @@ async function fetchArtistInfo(artistName) {
       };
     }
   }
-  return null;
+
+  // 誤ったWikipediaを採用するより、未取得を明示します。
+  return {
+    name: titleName || mainName,
+    extract: "アーティスト情報を自動取得できませんでした。",
+    image: "",
+    url: "",
+    genre: "",
+    genreSource: ""
+  };
 }
 
-async function fetchWikipediaSummary(name, lang = "ja") {
+function isLikelyMusicArtistSummary(summary, artistName) {
+  const title = String(summary?.title || "").toLowerCase();
+  const text = `${summary?.title || ""} ${summary?.extract || ""}`.toLowerCase();
+  const normalizedArtist = normalizeArtistLookupKey(artistName);
+
+  // Architectsのような一般語は、音楽系の語がないページを採用しない。
+  const musicWords = /(band|rock band|metalcore|post-hardcore|musician|music artist|singer|songwriter|rapper|音楽|バンド|歌手|ロック|メタルコア|グループ)/i;
+  const badWords = /(architecture|architectural|architects studio|建築|設計|事務所|建築家)/i;
+  if (badWords.test(text) && !musicWords.test(text)) return false;
+  if (!musicWords.test(text)) return false;
+
+  // タイトルまたは本文にアーティスト名が含まれることを軽く確認。
+  if (normalizedArtist && !title.includes(normalizedArtist) && !text.includes(normalizedArtist)) {
+    const compact = normalizedArtist.replace(/\s+/g, "");
+    if (compact && !title.replace(/\s+/g, "").includes(compact) && !text.replace(/\s+/g, "").includes(compact)) return false;
+  }
+  return true;
+}
+
+async function fetchWikipediaSummary(name, lang = "ja", requireMusic = false) {
   const title = String(name || "").trim();
   if (!title) return null;
   const direct = await fetchWikipediaSummaryByTitle(title, lang);
@@ -808,7 +872,10 @@ async function fetchWikipediaSummary(name, lang = "ja") {
     const searchRes = await fetch(searchUrl);
     if (!searchRes.ok) return null;
     const searchJson = await searchRes.json();
-    const best = (searchJson.query?.search || []).find(x => /band|artist|singer|musician|グループ|バンド|歌手|音楽/i.test(`${x.title} ${stripHtml(x.snippet || "")}`)) || searchJson.query?.search?.[0];
+    const results = searchJson.query?.search || [];
+    const best = requireMusic
+      ? results.find(x => /band|artist|singer|musician|music|rock|metalcore|グループ|バンド|歌手|音楽|ロック/i.test(`${x.title} ${stripHtml(x.snippet || "")}`))
+      : (results.find(x => /band|artist|singer|musician|グループ|バンド|歌手|音楽/i.test(`${x.title} ${stripHtml(x.snippet || "")}`)) || results[0]);
     if (!best?.title) return null;
     return await fetchWikipediaSummaryByTitle(best.title, lang);
   } catch (e) {
@@ -943,26 +1010,74 @@ async function autoFillMusicLinks() {
   createLyricsLinksFromForm(false);
 }
 
+function makeAppleMusicSearchUrl(title, artist) {
+  const q = [normalizeMusicSearchText(title, "title"), normalizeMusicSearchText(artist, "artist")].filter(Boolean).join(" ").trim();
+  return q ? `https://music.apple.com/search?term=${encodeURIComponent(q)}` : "";
+}
+
+function normalizeForMatch(value) {
+  return stripFeaturingText(String(value || ""))
+    .toLowerCase()
+    .replace(/[’‘´`]/g, "'")
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(official|music|video|lyrics|lyric|audio|remaster|remastered|feat|ft|featuring)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function musicResultMatches(item, title, artist) {
+  const wantedTitle = normalizeForMatch(title);
+  const wantedArtist = normalizeForMatch(artist);
+  const gotTitle = normalizeForMatch(item?.trackName || "");
+  const gotArtist = normalizeForMatch(item?.artistName || "");
+  if (!wantedTitle || !wantedArtist || !gotTitle || !gotArtist) return false;
+
+  const titleOk = gotTitle === wantedTitle || gotTitle.includes(wantedTitle) || wantedTitle.includes(gotTitle);
+  const artistOk = gotArtist === wantedArtist || gotArtist.includes(wantedArtist) || wantedArtist.includes(gotArtist);
+  return titleOk && artistOk;
+}
+
 async function fetchAppleMusicInfo(title, artist) {
-  const term = `${cleanMainSongTitle(title)} ${cleanMainArtistName(artist)}`.trim();
-  const params = new URLSearchParams({ term, media: "music", entity: "song", country: "JP", limit: "1" });
-  let res = await fetch(`https://itunes.apple.com/search?${params.toString()}`);
-  let json = await res.json();
-  let item = json.results?.[0];
-  if (!item) {
-    params.set("country", "US");
-    res = await fetch(`https://itunes.apple.com/search?${params.toString()}`);
-    json = await res.json();
-    item = json.results?.[0];
+  const cleanTitle = cleanMainSongTitle(title);
+  const cleanArtist = cleanMainArtistName(artist);
+  const term = `${cleanTitle} ${cleanArtist}`.trim();
+  const countries = ["JP", "US"];
+
+  for (const country of countries) {
+    const params = new URLSearchParams({ term, media: "music", entity: "song", country, limit: "10" });
+    const res = await fetch(`https://itunes.apple.com/search?${params.toString()}`);
+    if (!res.ok) continue;
+    const json = await res.json();
+    const item = (json.results || []).find(x => musicResultMatches(x, cleanTitle, cleanArtist));
+    if (!item) continue;
+    return {
+      url: item.trackViewUrl || "",
+      artwork: highResAppleArtwork(item.artworkUrl100 || ""),
+      trackName: item.trackName || "",
+      artistName: item.artistName || "",
+      collectionName: item.collectionName || ""
+    };
   }
-  if (!item) return null;
-  return {
-    url: item.trackViewUrl || "",
-    artwork: highResAppleArtwork(item.artworkUrl100 || ""),
-    trackName: item.trackName || "",
-    artistName: item.artistName || "",
-    collectionName: item.collectionName || ""
-  };
+
+  // 誤った直リンクを保存しない。見つからない場合は検索URLだけにします。
+  return { url: makeAppleMusicSearchUrl(cleanTitle, cleanArtist), artwork: "", trackName: "", artistName: "", collectionName: "" };
+}
+
+function resolveAppleMusicUrl(song) {
+  const saved = String(song?.apple_music_url || "").trim();
+  const safeSearch = makeAppleMusicSearchUrl(song?.title || "", song?.artist_name || "");
+  if (!saved) return safeSearch;
+  if (/music\.apple\.com\/search/i.test(saved)) return safeSearch || saved;
+
+  // 保存済みURLのslugに曲名かアーティスト名が見えない場合、誤リンクの可能性が高いので検索URLに切り替えます。
+  const normalizedSaved = normalizeForMatch(decodeURIComponent(saved));
+  const titleKey = normalizeForMatch(song?.title || "");
+  const artistKey = normalizeForMatch(song?.artist_name || "");
+  const titleLooksIncluded = titleKey && normalizedSaved.includes(titleKey);
+  const artistLooksIncluded = artistKey && normalizedSaved.includes(artistKey);
+  if (titleLooksIncluded || artistLooksIncluded) return saved;
+  return safeSearch || saved;
 }
 
 function highResAppleArtwork(url) {
