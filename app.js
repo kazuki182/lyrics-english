@@ -18,17 +18,26 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v37-artist-apple-wordfix";
+const APP_PATCH_VERSION = "v38-word-popup-broad";
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
 const COMMON_PASSWORD = "12345";
 const STOP_WORDS = new Set(["the", "a", "an", "is", "are", "am", "was", "were", "be", "been", "being", "to", "of", "in", "on", "at", "for", "and", "but", "or", "i", "you", "he", "she", "it", "we", "they", "me", "my", "your", "his", "her", "our", "their", "this", "that", "these", "those", "with", "from", "by", "as", "do", "does", "did", "not", "no", "so", "if", "then", "than", "too", "very", "just", "can", "could", "will", "would", "should", "must", "may", "might", "isnt", "dont", "cant", "wont", "im", "ive", "id", "ill", "youre", "youd", "youll"]);
+const BASIC_TOOLTIP_EXCLUDE = new Set(["said", "say", "says", "like", "made", "make", "go", "goes", "went", "come", "came", "back", "only", "still", "find", "found", "look", "looks", "see", "seen", "know", "knew", "get", "got", "take", "took", "put"]);
 const LEARNING_WORDS = new Set([
   // 英検準2級以上を目安に、歌詞学習で優先したい単語だけを表示・登録対象にします。
   "ocean", "promise", "pain", "wolves", "throne", "scar", "wound", "shape", "build", "broke", "broken", "forgive", "reason", "fight",
   "remember", "memory", "memories", "moment", "alone", "hurt", "break", "swim", "thrown", "infinity", "erase", "storm",
   "leader", "whole", "pack", "beat", "sticks", "stones", "river", "lost", "open", "dark", "lover", "dancing",
-  "blackhole", "black", "hole", "architect", "architects", "modern", "misery", "mortal", "ashes", "surrender", "fragile", "hollow", "regret", "anxiety", "pretend"
+  "blackhole", "black", "hole", "architect", "architects", "modern", "misery", "mortal", "ashes", "surrender", "fragile", "hollow", "regret", "anxiety", "pretend",
+  // v38: 単語ポップアップ対象を拡大。英検3級〜準2級目安 + 歌詞理解に重要な感情・比喩・熟語系の語。
+  "fear", "tears", "tear", "blood", "bleed", "breath", "breathe", "drown", "drowning", "sink", "sinking", "rise", "burn", "burning", "buried",
+  "alive", "dead", "ghost", "shadow", "heaven", "hell", "soul", "heart", "mind", "dream", "nightmare", "silence", "scream", "whisper",
+  "chaos", "enemy", "denial", "truth", "trust", "faith", "blame", "shame", "guilt", "numb", "escape", "fall", "fallen", "apart",
+  "hold", "save", "saved", "fading", "fade", "wasted", "chasing", "crawl", "crawling", "gravity", "damage", "damaged", "poison",
+  "venom", "mirror", "reflection", "pressure", "weight", "burden", "sin", "prayer", "pray", "mercy", "cruel", "bitter", "sweet",
+  "bleeding", "crash", "crashing", "disease", "demon", "monster", "desire", "hopeless", "hope", "fate", "destiny", "doubt",
+  "betray", "betrayal", "suffer", "suffering", "rescue", "release", "let", "reality", "fantasy", "pretending"
 ]);
 
 
@@ -119,6 +128,41 @@ const WORD_DICTIONARY = {
   regret: ["後悔する・後悔", "動詞 / 名詞", "regret + 名詞 / regret -ing で「〜を後悔する」。"],
   anxiety: ["不安・心配", "名詞", "強い心配や落ち着かない気持ちを表します。"],
   pretend: ["ふりをする", "動詞", "pretend to do で「〜するふりをする」。"],
+  fear: ["恐れ・恐怖", "名詞 / 動詞", "fear of ... で「〜への恐れ」。歌詞では不安や弱さの感情としてよく使います。"],
+  tears: ["涙", "名詞", "泣くことや悲しみの比喩としてよく使われます。"],
+  blood: ["血・血筋", "名詞", "強い痛み、犠牲、つながりの比喩として歌詞で使われます。"],
+  bleed: ["血を流す・心が痛む", "動詞", "実際の出血だけでなく、心の痛みの比喩でも使います。"],
+  breath: ["息・呼吸", "名詞", "catch my breath で「息を整える」。"],
+  breathe: ["息をする", "動詞", "I can’t breathe で「息ができない」。苦しさの表現にも使います。"],
+  drown: ["溺れる・押しつぶされる", "動詞", "drown in ... で「〜に溺れる」。感情に飲み込まれる比喩にも使います。"],
+  sink: ["沈む", "動詞", "気持ちが沈む、状況が悪化する比喩にも使います。"],
+  rise: ["立ち上がる・上がる", "動詞", "rise above ... で「〜を乗り越える」。"],
+  burn: ["燃える・焼きつく", "動詞", "強い感情や記憶が残る表現として使われます。"],
+  buried: ["埋もれた・隠された", "形容詞 / 過去分詞", "buried feelings で「隠された感情」。"],
+  alive: ["生きている", "形容詞", "feel alive で「生きている実感がある」。"],
+  ghost: ["幽霊・過去の影", "名詞", "過去の記憶や消えない存在の比喩として使います。"],
+  shadow: ["影", "名詞", "暗い過去や不安の比喩として使われます。"],
+  soul: ["魂・心の奥", "名詞", "感情や本心を表す強い語です。"],
+  heart: ["心・心臓", "名詞", "感情や愛情の中心として使います。"],
+  nightmare: ["悪夢", "名詞", "つらい現実や怖い記憶の比喩にも使います。"],
+  silence: ["沈黙", "名詞", "言えない気持ちや距離感を表します。"],
+  scream: ["叫ぶ", "動詞 / 名詞", "強い感情の爆発を表します。"],
+  whisper: ["ささやく", "動詞 / 名詞", "小さな声や内面の声を表します。"],
+  chaos: ["混乱・無秩序", "名詞", "心や状況がぐちゃぐちゃな状態を表します。"],
+  enemy: ["敵", "名詞", "相手だけでなく、自分の中の弱さの比喩にもなります。"],
+  truth: ["真実", "名詞", "the truth で「本当のこと」。"],
+  trust: ["信頼する・信頼", "動詞 / 名詞", "trust someone で「誰かを信頼する」。"],
+  faith: ["信念・信頼", "名詞", "宗教的な信仰だけでなく、信じる気持ちにも使います。"],
+  blame: ["責める・責任", "動詞 / 名詞", "blame someone for ... で「〜のことで人を責める」。"],
+  shame: ["恥・罪悪感", "名詞", "強い後悔や自己否定の感情を表します。"],
+  guilt: ["罪悪感", "名詞", "悪いことをしたと感じる気持ちです。"],
+  numb: ["感覚がない・しびれた", "形容詞", "感情が麻痺している状態にも使います。"],
+  escape: ["逃げる・逃避", "動詞 / 名詞", "escape from ... で「〜から逃げる」。"],
+  apart: ["離れて・ばらばらに", "副詞", "fall apart で「崩れる」。"],
+  fading: ["薄れていく・消えていく", "現在分詞", "記憶や感情が消えていく表現です。"],
+  poison: ["毒・悪影響", "名詞 / 動詞", "心を蝕むものの比喩として使われます。"],
+  gravity: ["重力・引き寄せる力", "名詞", "逃げられない力や重さの比喩として使います。"],
+
 };
 
 const WORD_USAGE = {
@@ -160,8 +204,8 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v37-artist-apple-wordfix";
-  console.log("Lyrics English v37-artist-apple-wordfix loaded");
+  window.LYRICS_ENGLISH_VERSION = "v38-word-popup-broad";
+  console.log("Lyrics English v38-word-popup-broad loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
@@ -509,6 +553,7 @@ function mergeLineWords(lyric, manualWords = []) {
     if (!word || STOP_WORDS.has(word)) return;
     map.set(word, {
       word,
+      fromManual: true,
       meaning: item.meaning || getWordInfo(word).meaning,
       usage: item.usage || getWordUsage(word).usage,
       example: item.example || getWordUsage(word).example,
@@ -532,11 +577,12 @@ function mergeLineWords(lyric, manualWords = []) {
       });
     });
 
-  return [...map.values()].filter(w => w.word && w.meaning && isLearningVocabularyWord(w.word));
+  return [...map.values()].filter(w => w.word && w.meaning && (w.fromManual || isLearningVocabularyWord(w.word)));
 }
 
 function isLearningVocabularyWord(word) {
   const key = normalizeWord(word).replace(/'/g, "");
+  if (!key || STOP_WORDS.has(key) || BASIC_TOOLTIP_EXCLUDE.has(key)) return false;
   return LEARNING_WORDS.has(key);
 }
 
@@ -577,7 +623,8 @@ function wordify(text, songId, lineNo, songTitle, artistName, wordItems = []) {
     if (/^[A-Za-z][A-Za-z'’]*$/.test(part)) {
       const clean = normalizeWord(part);
       const item = wordMap.get(clean) || {};
-      if (!isLearningVocabularyWord(clean)) {
+      const hasAnalysisWord = wordMap.has(clean) && item.meaning;
+      if (!hasAnalysisWord && !isLearningVocabularyWord(clean)) {
         return `<span class="word plain-word">${esc(part)}</span>`;
       }
       return `<span class="word" tabindex="0" data-word="${escAttr(clean)}" data-song-id="${escAttr(songId)}" data-line-no="${lineNo}" data-song-title="${escAttr(songTitle || "")}" data-artist-name="${escAttr(artistName || "")}" data-meaning="${escAttr(item.meaning || "")}" data-usage="${escAttr(item.usage || "")}" data-example="${escAttr(item.example || "")}" data-example-ja="${escAttr(item.example_ja || item.ja || "")}">${esc(part)}</span>`;
@@ -1227,7 +1274,7 @@ function buildChatGPTPrompt(title, artist, lyrics) {
 目的：
 ・自然な日本語訳を作る
 ・使われている文法を短く説明する
-・各英文ごとに、英検準2級以上を目安に学習価値の高い重要単語だけを1〜5個選び、意味、使い方、例文を必ず出す
+・各英文ごとに、歌詞の単語をタップした時に表示するための重要単語・熟語を2〜7個選び、意味、使い方、例文を必ず出す
 ・曲全体のジャンル候補、英語学習としての難易度、難易度理由を必ず出す
 ・初心者にもわかるようにする
 ・説明は長すぎず、アプリに表示しやすい形にする
@@ -1286,8 +1333,10 @@ example_ja: 例文の日本語訳
 ・直訳ではなく、歌詞として自然な日本語にしてください
 ・【曲の学習情報】は必ず最初に1回だけ書いてください。ジャンル候補、難易度、難易度理由を省略しないでください
 ・難易度は、初級=日常単語が多く文法がシンプル、中級=比喩・口語・不定詞/動名詞/現在分詞などがある、上級=抽象表現・スラング・省略・倒置・文化背景が多い、の基準で判定してください
-・【単語の意味】は英検準2級以上を目安に、学習価値の高い単語だけを書いてください。the / you / said / like / I などの基本語は原則除外してください
-・【単語データ】は必ず word / meaning / usage / example / example_ja の5項目で書いてください。基本語ではなく、英検準2級以上を目安にした重要単語だけにしてください
+・【単語の意味】と【単語データ】は、単語にカーソル/タップした時のポップアップに使います。難しすぎる単語だけでなく、歌詞理解に役立つ単語・熟語・句動詞・比喩表現・感情表現を広めに選んでください
+・英検3級〜準2級以上を目安にしてください。日常語でも、この歌詞の意味に大きく関わる単語は選んでください
+・I / you / me / the / a / is / am / are / and / or / to / of / in など、単独では説明価値が低い基本語は除外してください。ただし be tired of / fall apart / let go のような熟語の一部なら選んでください
+・【単語データ】は必ず word / meaning / usage / example / example_ja の5項目で書いてください
 ・アプリは【単語データ】を優先して読み取るため、単語ごとに必ず1セットずつ出してください
 ・出力はそのままアプリに貼れるように、見やすく整理してください`;
 }
@@ -1665,9 +1714,9 @@ function parseManualWords(text) {
 
   const seen = new Set();
   return words
-    .map(w => ({ ...w, word: normalizeWord(w.word) }))
+    .map(w => ({ ...w, fromManual: true, word: normalizeWord(w.word) }))
     .filter(w => {
-      if (!w.word || !w.meaning || STOP_WORDS.has(w.word) || seen.has(w.word) || !isLearningVocabularyWord(w.word)) return false;
+      if (!w.word || !w.meaning || STOP_WORDS.has(w.word) || seen.has(w.word) || (BASIC_TOOLTIP_EXCLUDE.has(w.word) && !w.usage)) return false;
       seen.add(w.word);
       return true;
     });
@@ -2410,7 +2459,7 @@ function getWordUsage(word) {
 function openWordModal(word, songId, lineNo, songTitle, artistName) {
   if (songId === "preview") { toast("保存後に単語を追加できます"); return; }
   const clean = normalizeWord(word);
-  if (STOP_WORDS.has(clean) || !isLearningVocabularyWord(clean)) { toast("英検準2級以上を目安にした重要単語だけを単語帳に追加できます"); return; }
+  if (STOP_WORDS.has(clean) || !isLearningVocabularyWord(clean)) { toast("歌詞理解に役立つ重要単語だけを単語帳に追加できます"); return; }
   const info = getWordInfo(clean);
   const song = songs.find(s => s.id === songId);
   const line = (song?.lyric_lines || []).find(l => Number(l.line_no) === Number(lineNo));
@@ -2432,7 +2481,7 @@ function closeWordModal() {
 
 function getWordInfo(word) {
   const key = normalizeWord(word).replace(/'/g, "");
-  const value = WORD_DICTIONARY[key] || WORD_DICTIONARY[normalizeWord(word)] || ["意味を確認してください", "品詞を確認してください", "英検準2級以上を目安にした重要単語として、文脈の中で意味を確認してください。"];
+  const value = WORD_DICTIONARY[key] || WORD_DICTIONARY[normalizeWord(word)] || ["意味を確認してください", "品詞を確認してください", "歌詞理解に役立つ重要単語として、文脈の中で意味を確認してください。"];
   return { meaning: value[0], pos: value[1], memo: value[2] };
 }
 
@@ -2770,7 +2819,7 @@ function getCurrentLyricsLinesForManualParse() {
 
 function wordsForLyricFromManual(lyric, words) {
   const set = new Set(getWords(lyric).map(normalizeWord));
-  return (words || []).filter(w => set.has(normalizeWord(w.word)) && isLearningVocabularyWord(normalizeWord(w.word)));
+  return (words || []).filter(w => set.has(normalizeWord(w.word)) && !STOP_WORDS.has(normalizeWord(w.word)) && !BASIC_TOOLTIP_EXCLUDE.has(normalizeWord(w.word)));
 }
 
 function examplesForLyricFromManual(lyric, examples) {
