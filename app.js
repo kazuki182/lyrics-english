@@ -204,7 +204,7 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v45-manual-grammar-block-direct";
+  window.LYRICS_ENGLISH_VERSION = "v46-edit-save-open-detail";
   console.log("Lyrics English v45-manual-grammar-block-direct loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
@@ -480,8 +480,6 @@ function openSong(id) {
             ${s.youtube_url ? `<a class="btn" href="${escAttr(s.youtube_url)}" target="_blank" rel="noopener">YouTube</a>` : `<button class="btn secondary" disabled>YouTube未登録</button>`}
             ${resolveAppleMusicUrl(s) ? `<a class="btn secondary" href="${escAttr(resolveAppleMusicUrl(s))}" target="_blank" rel="noopener">Apple Music</a>` : `<button class="btn secondary" disabled>Apple Music未登録</button>`}
             ${spotifyUrl ? `<a class="btn secondary" href="${escAttr(spotifyUrl)}" target="_blank" rel="noopener">Spotify</a>` : `<button class="btn secondary" disabled>Spotify未登録</button>`}
-            <button class="btn secondary" data-action="refresh-metadata" data-id="${escAttr(s.id)}" type="button">曲情報を更新</button>
-            <button class="btn green" data-action="refresh-analysis" data-id="${escAttr(s.id)}" type="button">分析レビューを更新</button>
           </div>
           <div class="speech-panel">
             <div class="speech-title">読み上げ</div>
@@ -513,7 +511,7 @@ function openSong(id) {
       <div id="artistInfo" class="mini">アーティスト情報を取得中...</div>
     </div>
     ${analysisState}
-    <div class="card"><h3 class="section-title">歌詞解説</h3><p class="mini">まず通常の歌詞解説を表示します。単語に触れると意味・使い方・例文が出ます。クリックすると単語帳追加画面が開きます。</p><div class="actions" style="margin:12px 0 16px"><button class="btn green" data-action="refresh-analysis" data-id="${escAttr(s.id)}" type="button">この曲の分析レビューを更新</button></div>${lines.map(l => lineHtml(l, s.id, s.title, s.artist_name)).join("") || "<p class='mini'>歌詞がありません。</p>"}</div>
+    <div class="card"><h3 class="section-title">歌詞解説</h3><p class="mini">単語に触れると意味・使い方・例文が出ます。クリックすると単語帳追加画面が開きます。</p>${lines.map(l => lineHtml(l, s.id, s.title, s.artist_name)).join("") || "<p class='mini'>歌詞がありません。</p>"}</div>
     ${s.manual_analysis ? `<div class="card"><details class="manual-analysis-toggle"><summary>ChatGPT解析結果を開く</summary><p class="mini">ChatGPTで作成した解析結果です。必要なときだけ開いて確認できます。</p><div class="manual-analysis">${nl(s.manual_analysis)}</div></details></div>` : ""}`;
   showScreen("detail");
   enrichSongDetail(s, youtubeThumb, savedCover);
@@ -2279,7 +2277,12 @@ async function saveSong() {
   renderSongs();
   await fetchLogs();
   renderLog();
-  showScreen("home");
+  const savedSong = songs.find(x => String(x.id) === String(id));
+  if (savedSong) {
+    openSong(id);
+  } else {
+    showScreen("home");
+  }
 }
 
 function extractMissingColumnName(message = "") {
