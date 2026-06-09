@@ -19,7 +19,7 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v57-artist-profile-source-fix";
+const APP_PATCH_VERSION = "v58-artist-profile-web-search-ja-en";
 let noteFilter = { type: "all", query: "" };
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
@@ -1169,9 +1169,15 @@ function normalizeArtistLookupKey(name) {
   return String(name || "")
     .toLowerCase()
     .replace(/\([^)]*\)/g, " ")
-    .replace(/(band|music artist|musician|rock band|british band|american band)/g, " ")
+    .replace(/\b(band|music artist|musician|rock band|british band|american band|japanese band|バンド|歌手|ミュージシャン)\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function isGenericArtistProfileText(text) {
+  const value = String(text || "").trim();
+  if (!value) return false;
+  return /洋楽を通じて英語表現を学ぶのに適した|歌詞には日常的な単語|和訳だけでなく文法や語感|英語表現を学ぶのに適したアーティスト/.test(value);
 }
 
 function makeArtistProfile(artist) {
@@ -1188,8 +1194,7 @@ function makeArtistProfile(artist) {
     "architects": "Architectsはイギリス・ブライトン出身のメタルコア／ロックバンドです。重いサウンドと、喪失、不安、怒り、社会的テーマを含む歌詞で知られています。英語学習では、抽象表現、感情表現、比喩の読み取りを学びやすいアーティストです。",
     "architects (british band)": "Architectsはイギリス・ブライトン出身のメタルコア／ロックバンドです。重いサウンドと、喪失、不安、怒り、社会的テーマを含む歌詞で知られています。英語学習では、抽象表現、感情表現、比喩の読み取りを学びやすいアーティストです。"
   };
-  if (profiles[key]) return profiles[key];
-  return `${name}は、洋楽を通じて英語表現を学ぶのに適したアーティストです。歌詞には日常的な単語、感情表現、前置詞、動詞表現が含まれるため、和訳だけでなく文法や語感も合わせて学べます。`;
+  return profiles[key] || "";
 }
 
 function hasJapaneseText(text) {
@@ -1203,18 +1208,60 @@ function looksEnglishProfile(text) {
   return /\b(is|are|was|were|born|formed|singer|rapper|band|songwriter|producer|American|British|rock|pop)\b/i.test(value);
 }
 
+function isUsefulArtistProfileText(text) {
+  const value = String(text || "").trim();
+  if (!value) return false;
+  if (/^\{\s*\}$/.test(value)) return false;
+  if (/自動取得できませんでした|取得できませんでした/.test(value)) return false;
+  if (isGenericArtistProfileText(value)) return false;
+  return value.length >= 20;
+}
+
+function summarizeEnglishArtistProfileToJapanese(artistName, extract = "") {
+  const name = (artistName || "このアーティスト").trim();
+  const text = String(extract || "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  const first = text.split(/(?<=\.)\s+/)[0] || text;
+  const lower = first.toLowerCase();
+  const countryMap = [
+    [/american|united states|u\.s\./i, "アメリカ"],
+    [/british|england|english|united kingdom|uk/i, "イギリス"],
+    [/canadian/i, "カナダ"],
+    [/australian/i, "オーストラリア"],
+    [/japanese/i, "日本"],
+    [/korean/i, "韓国"],
+    [/irish/i, "アイルランド"]
+  ];
+  const country = (countryMap.find(([re]) => re.test(first)) || [null, ""])[1];
+  let type = "音楽アーティスト";
+  if (/rock band|metalcore band|post-hardcore band|pop punk band|band/i.test(first)) type = "バンド";
+  else if (/rapper/i.test(first)) type = "ラッパー";
+  else if (/singer-songwriter/i.test(first)) type = "シンガーソングライター";
+  else if (/singer/i.test(first)) type = "歌手";
+  else if (/musician/i.test(first)) type = "ミュージシャン";
+  const formed = first.match(/formed in ([^.,;]+)/i);
+  const origin = first.match(/from ([^.,;]+)/i);
+  const originText = formed ? `。${formed[1].trim()}で結成されました` : origin ? `。${origin[1].trim()}出身です` : "";
+  const countryText = country ? `${country}の` : "";
+  return `${name}は、${countryText}${type}です${originText}。`;
+}
+
 function getJapaneseArtistProfile(artistName, rawProfile = "") {
   const artist = (artistName || "このアーティスト").trim();
   const profile = String(rawProfile || "").trim();
 
-  // 日本語プロフィールが既に入っている場合だけ、そのまま使います。
-  if (profile && hasJapaneseText(profile) && !looksEnglishProfile(profile)) {
+  if (isUsefulArtistProfileText(profile) && hasJapaneseText(profile) && !looksEnglishProfile(profile)) {
     return profile;
   }
 
-  // 英語Wikipediaの本文や英語テキストは画面に出さず、
-  // アプリ内の日本語紹介文に必ず置き換えます。
-  return makeArtistProfile(artist);
+  if (isUsefulArtistProfileText(profile) && looksEnglishProfile(profile)) {
+    const summarized = summarizeEnglishArtistProfileToJapanese(artist, profile);
+    if (summarized) return summarized;
+  }
+
+  const known = makeArtistProfile(artist);
+  if (known) return known;
+  return "アーティスト情報を自動取得できませんでした。";
 }
 
 function getDisplayArtistProfile(song) {
@@ -1235,7 +1282,28 @@ function setCachedMapValue(cache, key, value) {
 }
 
 function isWikipediaSearchQualifierTitle(title) {
-  return /\b(band|music artist|musician|rock band|metalcore band|post-hardcore band|singer|rapper)\b/i.test(String(title || ""));
+  return /\b(band|music artist|musician|rock band|metalcore band|post-hardcore band|singer|rapper)\b|バンド|歌手|ミュージシャン|音楽/i.test(String(title || ""));
+}
+
+function makeWikipediaArtistSearchCandidates(artistName) {
+  const mainName = cleanMainArtistName(artistName || "");
+  const titleName = titleCaseArtist(mainName);
+  return uniqueTextValues([
+    mainName,
+    `${mainName} バンド`,
+    `${mainName} 歌手`,
+    `${mainName} ミュージシャン`,
+    `${mainName} band`,
+    `${mainName} music artist`,
+    `${mainName} musician`,
+    `${mainName} rock band`,
+    `${mainName} metalcore band`,
+    `${mainName} post-hardcore band`,
+    titleName,
+    `${titleName} band`,
+    `${titleName} music artist`,
+    `${titleName} rock band`
+  ]).filter(Boolean);
 }
 
 async function fetchArtistInfo(artistName) {
@@ -1243,29 +1311,22 @@ async function fetchArtistInfo(artistName) {
   if (!rawName) return null;
   const mainName = cleanMainArtistName(rawName);
   const titleName = titleCaseArtist(mainName);
+  const candidates = makeWikipediaArtistSearchCandidates(mainName);
 
-  // 一般名詞にもなるバンド名は、最初から音楽系キーワード付きで検索します。
-  const candidates = uniqueTextValues([
-    `${mainName} band`,
-    `${mainName} music artist`,
-    `${mainName} musician`,
-    `${mainName} rock band`,
-    `${mainName} metalcore band`,
-    `${titleName} band`,
-    `${titleName} music artist`,
-    titleName,
-    mainName
-  ]);
-
+  // 日本語Wikipediaを先に探し、なければ英語Wikipediaを検索します。
   for (const lang of ["ja", "en"]) {
     for (const candidate of candidates) {
       const summary = await fetchWikipediaSummary(candidate, lang, true);
       if (!summary || !isLikelyMusicArtistSummary(summary, mainName)) continue;
       const genreInfo = await fetchGenreInfo(summary.title || candidate, summary.extract || "");
       const isJapanese = lang === "ja" || hasJapaneseText(summary.extract || "");
+      const extract = isJapanese
+        ? summary.extract
+        : summarizeEnglishArtistProfileToJapanese(summary.title || mainName, summary.extract || "");
+      if (!isUsefulArtistProfileText(extract)) continue;
       return {
-        name: summary.title || candidate,
-        extract: isJapanese ? summary.extract : getJapaneseArtistProfile(summary.title || mainName, summary.extract),
+        name: summary.title || titleName || mainName,
+        extract,
         image: summary.thumbnail?.source || summary.originalimage?.source || "",
         url: summary.content_urls?.desktop?.page || summary.content_urls?.mobile?.page || "",
         genre: genreInfo.genre || inferGenreFromText(summary.extract || ""),
@@ -1274,10 +1335,10 @@ async function fetchArtistInfo(artistName) {
     }
   }
 
-  // 誤ったWikipediaを採用するより、未取得を明示します。
+  const known = makeArtistProfile(mainName);
   return {
     name: titleName || mainName,
-    extract: "アーティスト情報を自動取得できませんでした。",
+    extract: known || "アーティスト情報を自動取得できませんでした。",
     image: "",
     url: "",
     genre: "",
@@ -1287,16 +1348,14 @@ async function fetchArtistInfo(artistName) {
 
 function isLikelyMusicArtistSummary(summary, artistName) {
   const title = String(summary?.title || "").toLowerCase();
-  const text = `${summary?.title || ""} ${summary?.extract || ""}`.toLowerCase();
+  const text = `${summary?.title || ""} ${summary?.description || ""} ${summary?.extract || ""}`.toLowerCase();
   const normalizedArtist = normalizeArtistLookupKey(artistName);
 
-  // Architectsのような一般語は、音楽系の語がないページを採用しない。
-  const musicWords = /(band|rock band|metalcore|post-hardcore|musician|music artist|singer|songwriter|rapper|音楽|バンド|歌手|ロック|メタルコア|グループ)/i;
-  const badWords = /(architecture|architectural|architects studio|建築|設計|事務所|建築家)/i;
+  const musicWords = /(band|rock band|metalcore|post-hardcore|pop punk|musician|music artist|singer|songwriter|rapper|record producer|音楽|バンド|歌手|ロック|メタルコア|グループ|ミュージシャン|シンガー)/i;
+  const badWords = /(architecture|architectural|architects studio|company|university|film|brand|建築|設計|事務所|建築家|会社|大学|映画|ブランド)/i;
   if (badWords.test(text) && !musicWords.test(text)) return false;
   if (!musicWords.test(text)) return false;
 
-  // タイトルまたは本文にアーティスト名が含まれることを軽く確認。
   if (normalizedArtist && !title.includes(normalizedArtist) && !text.includes(normalizedArtist)) {
     const compact = normalizedArtist.replace(/\s+/g, "");
     if (compact && !title.replace(/\s+/g, "").includes(compact) && !text.replace(/\s+/g, "").includes(compact)) return false;
@@ -1312,9 +1371,6 @@ async function fetchWikipediaSummary(name, lang = "ja", requireMusic = false) {
   const cached = getCachedMapValue(WIKI_SUMMARY_CACHE, cacheKey);
   if (cached !== undefined) return cached;
 
-  // Artist lookups often use search phrases such as "Architects band".
-  // Calling REST summary directly with those phrases creates 404 console noise,
-  // so music lookups go through Wikipedia search first.
   if (!requireMusic && !isWikipediaSearchQualifierTitle(title)) {
     const direct = await fetchWikipediaSummaryByTitle(title, lang);
     if (direct) return setCachedMapValue(WIKI_SUMMARY_CACHE, cacheKey, direct);
@@ -1326,14 +1382,19 @@ async function fetchWikipediaSummary(name, lang = "ja", requireMusic = false) {
     if (!searchRes.ok) return setCachedMapValue(WIKI_SUMMARY_CACHE, cacheKey, null);
     const searchJson = await searchRes.json();
     const results = searchJson.query?.search || [];
-    const musicResultRegex = /band|artist|singer|musician|music|rock|metalcore|post-hardcore|emo|グループ|バンド|歌手|音楽|ロック/i;
-    const badResultRegex = /architecture|architectural|architects studio|建築|設計|事務所|建築家/i;
-    const best = requireMusic
-      ? results.find(x => {
-          const text = `${x.title} ${stripHtml(x.snippet || "")}`;
-          return musicResultRegex.test(text) && !badResultRegex.test(text);
-        })
-      : (results.find(x => musicResultRegex.test(`${x.title} ${stripHtml(x.snippet || "")}`)) || results[0]);
+    const musicResultRegex = /band|artist|singer|musician|music|rock|metalcore|post-hardcore|emo|グループ|バンド|歌手|音楽|ロック|ミュージシャン|シンガー/i;
+    const badResultRegex = /architecture|architectural|architects studio|company|university|film|brand|建築|設計|事務所|建築家|会社|大学|映画|ブランド/i;
+    const scored = results
+      .map(x => {
+        const text = `${x.title} ${stripHtml(x.snippet || "")}`;
+        const musicScore = musicResultRegex.test(text) ? 2 : 0;
+        const titleScore = normalizeArtistLookupKey(x.title).includes(normalizeArtistLookupKey(title)) ? 1 : 0;
+        const badScore = badResultRegex.test(text) ? -3 : 0;
+        return { item: x, score: musicScore + titleScore + badScore };
+      })
+      .filter(x => !requireMusic || x.score > 0)
+      .sort((a, b) => b.score - a.score);
+    const best = (scored[0]?.item) || (!requireMusic ? results[0] : null);
     if (!best?.title) return setCachedMapValue(WIKI_SUMMARY_CACHE, cacheKey, null);
     const summary = await fetchWikipediaSummaryByTitle(best.title, lang);
     return setCachedMapValue(WIKI_SUMMARY_CACHE, cacheKey, summary);
