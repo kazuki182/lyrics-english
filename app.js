@@ -9,6 +9,7 @@ let supabaseClient;
 let currentUser = null;
 let songs = [];
 let vocab = [];
+let savedLyrics = [];
 let logs = [];
 let currentAnalysis = [];
 let selectedWordContext = null;
@@ -18,7 +19,7 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v39-word-data-popup-sync";
+const APP_PATCH_VERSION = "v50-save-lyric-lines";
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
 const COMMON_PASSWORD = "12345";
@@ -204,8 +205,8 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v49-artist-info-404-guard";
-  console.log("Lyrics English v49-artist-info-404-guard loaded");
+  window.LYRICS_ENGLISH_VERSION = "v50-save-lyric-lines";
+  console.log("Lyrics English v50-save-lyric-lines loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
@@ -257,6 +258,8 @@ function handleDelegatedClick(e) {
     if (name === "refresh-metadata") refreshSongMetadata(id);
     if (name === "refresh-analysis") refreshSongAnalysis(id);
     if (name === "delete-vocab") deleteVocab(id);
+    if (name === "save-lyric-line") saveLyricLineFromButton(action);
+    if (name === "delete-saved-lyric") deleteSavedLyric(id);
     return;
   }
   const word = e.target.closest("[data-word]");
@@ -316,7 +319,7 @@ function initSupabase() {
 
 async function startApp() {
   if (!initSupabase()) return;
-  await Promise.all([fetchSongs(), fetchVocab(), fetchLogs()]);
+  await Promise.all([fetchSongs(), fetchVocab(), fetchSavedLyrics(), fetchLogs()]);
   subscribeRealtime();
   renderSongs();
   renderVocab();
@@ -335,6 +338,20 @@ async function fetchVocab() {
   vocab = data || [];
 }
 
+async function fetchSavedLyrics() {
+  const { data, error } = await supabaseClient
+    .from("saved_lyrics")
+    .select("*")
+    .eq("user_id", currentUser || "")
+    .order("created_at", { ascending: false });
+  if (error) {
+    savedLyrics = [];
+    console.warn("保存フレーズの取得をスキップしました。saved_lyricsテーブルが未作成の可能性があります。", error.message || error);
+    return;
+  }
+  savedLyrics = data || [];
+}
+
 async function fetchLogs() {
   const { data, error } = await supabaseClient.from("activity_logs").select("*").order("created_at", { ascending: false }).limit(10);
   if (!error) logs = data || [];
@@ -349,6 +366,9 @@ function subscribeRealtime() {
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "vocabulary" }, async () => {
       await fetchVocab(); renderVocab(); setStatus("単語帳が更新されました / " + new Date().toLocaleTimeString());
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "saved_lyrics" }, async () => {
+      await fetchSavedLyrics(); renderVocab(); setStatus("保存フレーズが更新されました / " + new Date().toLocaleTimeString());
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "activity_logs" }, async () => {
       await fetchLogs(); renderLog();
@@ -675,6 +695,7 @@ function lineHtml(line, songId, songTitle, artistName) {
       <button class="btn secondary" data-action="speech-rate" data-rate="0.5" data-text="${escAttr(lyric)}" type="button">0.5倍</button>
       <button class="btn secondary" data-action="speech-rate" data-rate="0.35" data-text="${escAttr(lyric)}" type="button">0.35倍</button>
       <button class="btn green" type="button">単語をクリックして単語帳へ</button>
+      <button class="btn secondary" type="button" data-action="save-lyric-line" data-song-id="${escAttr(songId)}" data-song-title="${escAttr(songTitle || "")}" data-artist-name="${escAttr(artistName || "")}" data-line-no="${Number(line.line_no) || 0}" data-lyric="${escAttr(lyric)}" data-translation="${escAttr(translation)}">この歌詞を保存</button>
     </div>
   </div>`;
 }
@@ -2740,8 +2761,46 @@ async function addSelectedWordToVocab() {
   toast("単語帳に追加しました");
 }
 
+async function saveLyricLineFromButton(button) {
+  const songId = button.dataset.songId || "";
+  if (!songId || songId === "preview") { toast("保存後の曲詳細で歌詞を保存できます"); return; }
+  const lyric = String(button.dataset.lyric || "").trim();
+  const translation = String(button.dataset.translation || "").trim();
+  if (!lyric) { toast("保存できる歌詞がありません"); return; }
+  const duplicate = savedLyrics.some(x => String(x.song_id) === String(songId) && String(x.lyric || "").trim() === lyric);
+  if (duplicate) { toast("この歌詞はすでに保存済みです"); return; }
+  const payload = {
+    user_id: currentUser,
+    song_id: songId,
+    song_title: button.dataset.songTitle || "",
+    artist_name: button.dataset.artistName || "",
+    lyric,
+    translation,
+    memo: "",
+    created_at: new Date().toISOString()
+  };
+  const { error } = await supabaseClient.from("saved_lyrics").insert(payload);
+  if (error) {
+    console.error("Saved lyric insert failed", error);
+    toast("歌詞保存失敗: saved_lyricsテーブルを作成してください");
+    return;
+  }
+  await addLog(`${currentUser} が歌詞「${lyric.slice(0, 30)}」を保存しました`);
+  await fetchSavedLyrics();
+  renderVocab();
+  toast("歌詞を学習ノートに保存しました");
+}
+
+async function deleteSavedLyric(id) {
+  const { error } = await supabaseClient.from("saved_lyrics").delete().eq("id", id);
+  if (error) { toast("削除失敗: " + error.message); return; }
+  await fetchSavedLyrics();
+  renderVocab();
+  toast("保存フレーズを削除しました");
+}
+
 function renderVocab() {
-  qs("#vocabView").innerHTML = vocab.length ? `<h3 class="section-title">保存単語</h3>` + vocab.map(x => `
+  const vocabHtml = vocab.length ? `<h3 class="section-title">保存単語</h3>` + vocab.map(x => `
     <div class="song-item">
       <div>
         <h4>${esc(x.word)}</h4>
@@ -2751,7 +2810,23 @@ function renderVocab() {
         <div class="mini">${esc(x.example || x.memo || "")}</div>
       </div>
       <button class="btn red no-print" data-action="delete-vocab" data-id="${escAttr(x.id)}">削除</button>
-    </div>`).join("") : `<p class="mini">単語はまだありません。</p>`;
+    </div>`).join("") : `<h3 class="section-title">保存単語</h3><p class="mini">単語はまだありません。</p>`;
+
+  const lyricHtml = savedLyrics.length ? `<h3 class="section-title" style="margin-top:28px">保存フレーズ</h3>` + savedLyrics.map(x => `
+    <div class="song-item saved-lyric-card">
+      <div>
+        <h4>${esc(x.lyric || "")}</h4>
+        <div class="jp"><b>自然な和訳：</b>${esc(x.translation || "")}</div>
+        <div class="mini">${esc(x.song_title || "")} / ${esc(x.artist_name || "")} / ${fmt(x.created_at)}</div>
+        ${x.memo ? `<div class="mini">メモ: ${esc(x.memo)}</div>` : ""}
+      </div>
+      <div class="actions">
+        ${x.song_id ? `<button class="btn secondary no-print" data-action="open-song" data-id="${escAttr(x.song_id)}">曲を開く</button>` : ""}
+        <button class="btn red no-print" data-action="delete-saved-lyric" data-id="${escAttr(x.id)}">削除</button>
+      </div>
+    </div>`).join("") : `<h3 class="section-title" style="margin-top:28px">保存フレーズ</h3><p class="mini">保存した歌詞はまだありません。曲詳細で「この歌詞を保存」を押すとここに表示されます。</p>`;
+
+  qs("#vocabView").innerHTML = vocabHtml + lyricHtml;
 }
 
 async function deleteVocab(id) {
@@ -2762,7 +2837,9 @@ async function deleteVocab(id) {
 }
 
 function showPrintVocab() {
-  qs("#vocabView").innerHTML = `<div class="print-area"><h2>Lyrics English 単語帳</h2><p>作成日: ${new Date().toLocaleDateString()}</p>${vocab.map(x => `<div class="vocab-row"><b>${esc(x.word)}</b>: ${esc(x.meaning)}<br><small>${esc(x.part_of_speech || "")} / ${esc(x.song_title || "")} / ${esc(x.artist_name || "")}</small></div>`).join("") || "単語はまだありません。"}</div>`;
+  const words = vocab.map(x => `<div class="vocab-row"><b>${esc(x.word)}</b>: ${esc(x.meaning)}<br><small>${esc(x.part_of_speech || "")} / ${esc(x.song_title || "")} / ${esc(x.artist_name || "")}</small></div>`).join("") || "単語はまだありません。";
+  const lines = savedLyrics.map(x => `<div class="vocab-row"><b>${esc(x.lyric || "")}</b><br>${esc(x.translation || "")}<br><small>${esc(x.song_title || "")} / ${esc(x.artist_name || "")}</small></div>`).join("") || "保存フレーズはまだありません。";
+  qs("#vocabView").innerHTML = `<div class="print-area"><h2>Lyrics English 学習ノート</h2><p>作成日: ${new Date().toLocaleDateString()}</p><h3>保存単語</h3>${words}<h3>保存フレーズ</h3>${lines}</div>`;
 }
 
 function renderLog() {

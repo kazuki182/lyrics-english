@@ -76,7 +76,7 @@
   .plain-word{opacity:.72;cursor:default}
 
     .analysis-state-grid { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
-    .study-home-card{display:flex;justify-content:space-between;align-items:center;gap:16px}.study-home-card .btn{flex:0 0 auto}.artist-library-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}.artist-library-card{border:1px solid var(--line);background:rgba(255,255,255,.045);border-radius:18px;padding:14px}.artist-library-head{width:100%;display:flex;justify-content:space-between;align-items:center;gap:10px;background:transparent;color:inherit;text-align:left;padding:0 0 10px;border-bottom:1px solid var(--line)}.artist-library-head h4{margin:0 0 4px;font-size:18px}.artist-library-songs{padding-top:10px}.artist-mini-song{width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:14px;color:var(--text);padding:10px 12px;margin-top:8px}.artist-mini-song span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .study-home-card{display:flex;justify-content:space-between;align-items:center;gap:16px}.study-home-card .btn{flex:0 0 auto}.artist-library-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}.artist-library-card{border:1px solid var(--line);background:rgba(255,255,255,.045);border-radius:18px;padding:14px}.artist-library-head{width:100%;display:flex;justify-content:space-between;align-items:center;gap:10px;background:transparent;color:inherit;text-align:left;padding:0 0 10px;border-bottom:1px solid var(--line)}.artist-library-head h4{margin:0 0 4px;font-size:18px}.artist-library-songs{padding-top:10px}.artist-mini-song{width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:14px;color:var(--text);padding:10px 12px;margin-top:8px}.artist-mini-song span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.saved-lyric-card h4{font-size:18px;line-height:1.55;margin-bottom:8px}.saved-lyric-card .jp{color:#ffe9a8;margin:4px 0 8px}
     .danger-tag { background:#5b2330; color:#ffd5df; border-color:#8b3a4a; }
     .warn-text { color:#ffd28a; margin-top:10px; }
 </style>
@@ -257,7 +257,7 @@
     </section>
 
     <section id="vocab" class="screen">
-      <div class="card no-print"><h3 class="section-title">単語帳</h3><div class="actions"><button class="btn" id="printViewBtn">A4 PDF用表示</button><button class="btn secondary" id="printBtn">印刷 / PDF保存</button></div></div>
+      <div class="card no-print"><h3 class="section-title">学習ノート</h3><p class="mini">保存した単語と、曲詳細で保存した歌詞フレーズをまとめて確認できます。</p><div class="actions"><button class="btn" id="printViewBtn">A4 PDF用表示</button><button class="btn secondary" id="printBtn">印刷 / PDF保存</button></div></div>
       <div class="card" id="vocabView"></div>
     </section>
 
@@ -265,7 +265,7 @@
       <button data-screen="home" class="active">Home</button>
       <button data-screen="songs">Songs</button>
       <button data-screen="add">Add</button>
-      <button data-screen="vocab">Vocab</button>
+      <button data-screen="vocab">Note</button>
     </div>
   </div>
 
@@ -284,6 +284,6 @@
   <div id="wordTooltip" class="word-tooltip" role="tooltip"></div>
   <div id="toast" class="toast"></div>
   <script src="config.js"></script>
-  <script src="app.js?v=49-artist-info-404-guard"></script>
+  <script src="app.js?v=50-save-lyric-lines"></script>
 </body>
 </html>
