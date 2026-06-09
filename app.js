@@ -204,8 +204,8 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v48-home-layout-study-first";
-  console.log("Lyrics English v48-home-layout-study-first loaded");
+  window.LYRICS_ENGLISH_VERSION = "v49-artist-info-404-guard";
+  console.log("Lyrics English v49-artist-info-404-guard loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
@@ -939,6 +939,23 @@ function getDisplayArtistProfile(song) {
   return getJapaneseArtistProfile(song?.artist_name || "このアーティスト", song?.artist_profile || "");
 }
 
+const WIKI_SUMMARY_CACHE = new Map();
+const WIKI_GENRE_CACHE = new Map();
+
+function getCachedMapValue(cache, key) {
+  if (cache.has(key)) return cache.get(key);
+  return undefined;
+}
+
+function setCachedMapValue(cache, key, value) {
+  cache.set(key, value);
+  return value;
+}
+
+function isWikipediaSearchQualifierTitle(title) {
+  return /\b(band|music artist|musician|rock band|metalcore band|post-hardcore band|singer|rapper)\b/i.test(String(title || ""));
+}
+
 async function fetchArtistInfo(artistName) {
   const rawName = (artistName || "").trim();
   if (!rawName) return null;
@@ -1008,50 +1025,75 @@ function isLikelyMusicArtistSummary(summary, artistName) {
 async function fetchWikipediaSummary(name, lang = "ja", requireMusic = false) {
   const title = String(name || "").trim();
   if (!title) return null;
-  const direct = await fetchWikipediaSummaryByTitle(title, lang);
-  if (direct) return direct;
+
+  const cacheKey = `${lang}:${requireMusic ? "music" : "any"}:${title.toLowerCase()}`;
+  const cached = getCachedMapValue(WIKI_SUMMARY_CACHE, cacheKey);
+  if (cached !== undefined) return cached;
+
+  // Artist lookups often use search phrases such as "Architects band".
+  // Calling REST summary directly with those phrases creates 404 console noise,
+  // so music lookups go through Wikipedia search first.
+  if (!requireMusic && !isWikipediaSearchQualifierTitle(title)) {
+    const direct = await fetchWikipediaSummaryByTitle(title, lang);
+    if (direct) return setCachedMapValue(WIKI_SUMMARY_CACHE, cacheKey, direct);
+  }
+
   try {
     const searchUrl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(title)}&format=json&origin=*`;
     const searchRes = await fetch(searchUrl);
-    if (!searchRes.ok) return null;
+    if (!searchRes.ok) return setCachedMapValue(WIKI_SUMMARY_CACHE, cacheKey, null);
     const searchJson = await searchRes.json();
     const results = searchJson.query?.search || [];
+    const musicResultRegex = /band|artist|singer|musician|music|rock|metalcore|post-hardcore|emo|グループ|バンド|歌手|音楽|ロック/i;
+    const badResultRegex = /architecture|architectural|architects studio|建築|設計|事務所|建築家/i;
     const best = requireMusic
-      ? results.find(x => /band|artist|singer|musician|music|rock|metalcore|グループ|バンド|歌手|音楽|ロック/i.test(`${x.title} ${stripHtml(x.snippet || "")}`))
-      : (results.find(x => /band|artist|singer|musician|グループ|バンド|歌手|音楽/i.test(`${x.title} ${stripHtml(x.snippet || "")}`)) || results[0]);
-    if (!best?.title) return null;
-    return await fetchWikipediaSummaryByTitle(best.title, lang);
+      ? results.find(x => {
+          const text = `${x.title} ${stripHtml(x.snippet || "")}`;
+          return musicResultRegex.test(text) && !badResultRegex.test(text);
+        })
+      : (results.find(x => musicResultRegex.test(`${x.title} ${stripHtml(x.snippet || "")}`)) || results[0]);
+    if (!best?.title) return setCachedMapValue(WIKI_SUMMARY_CACHE, cacheKey, null);
+    const summary = await fetchWikipediaSummaryByTitle(best.title, lang);
+    return setCachedMapValue(WIKI_SUMMARY_CACHE, cacheKey, summary);
   } catch (e) {
-    console.warn("Wikipedia search failed", e);
-    return null;
+    console.info("Wikipedia search skipped", title, e?.message || e);
+    return setCachedMapValue(WIKI_SUMMARY_CACHE, cacheKey, null);
   }
 }
 
 async function fetchWikipediaSummaryByTitle(title, lang = "ja") {
+  const cleanTitle = String(title || "").trim();
+  if (!cleanTitle) return null;
+  const cacheKey = `${lang}:summary:${cleanTitle.toLowerCase()}`;
+  const cached = getCachedMapValue(WIKI_SUMMARY_CACHE, cacheKey);
+  if (cached !== undefined) return cached;
   try {
-    const res = await fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`);
-    if (!res.ok) return null;
+    const res = await fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(cleanTitle)}`);
+    if (!res.ok) return setCachedMapValue(WIKI_SUMMARY_CACHE, cacheKey, null);
     const json = await res.json();
-    if (json.type === "disambiguation" || !json.extract) return null;
-    return json;
+    if (json.type === "disambiguation" || !json.extract) return setCachedMapValue(WIKI_SUMMARY_CACHE, cacheKey, null);
+    return setCachedMapValue(WIKI_SUMMARY_CACHE, cacheKey, json);
   } catch (e) {
-    console.warn("Wikimedia summary failed", e);
-    return null;
+    console.info("Wikimedia summary skipped", cleanTitle, e?.message || e);
+    return setCachedMapValue(WIKI_SUMMARY_CACHE, cacheKey, null);
   }
 }
 
 async function fetchGenreInfo(artistName, fallbackText = "") {
   const fallbackGenre = inferGenreFromText(fallbackText);
+  const cacheKey = String(artistName || "").toLowerCase();
+  const cached = getCachedMapValue(WIKI_GENRE_CACHE, cacheKey);
+  if (cached !== undefined) return cached;
   try {
     const searchUrl = `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(artistName)}&language=en&format=json&origin=*`;
     const searchRes = await fetch(searchUrl);
-    if (!searchRes.ok) return { genre: fallbackGenre, source: fallbackGenre ? "Wikipedia概要から推定" : "" };
+    if (!searchRes.ok) return setCachedMapValue(WIKI_GENRE_CACHE, cacheKey, { genre: fallbackGenre, source: fallbackGenre ? "Wikipedia概要から推定" : "" });
     const searchJson = await searchRes.json();
     const entityId = searchJson.search?.[0]?.id;
-    if (!entityId) return { genre: fallbackGenre, source: fallbackGenre ? "Wikipedia概要から推定" : "" };
+    if (!entityId) return setCachedMapValue(WIKI_GENRE_CACHE, cacheKey, { genre: fallbackGenre, source: fallbackGenre ? "Wikipedia概要から推定" : "" });
     const entityUrl = `https://www.wikidata.org/wiki/Special:EntityData/${encodeURIComponent(entityId)}.json`;
     const entityRes = await fetch(entityUrl);
-    if (!entityRes.ok) return { genre: fallbackGenre, source: fallbackGenre ? "Wikipedia概要から推定" : "" };
+    if (!entityRes.ok) return setCachedMapValue(WIKI_GENRE_CACHE, cacheKey, { genre: fallbackGenre, source: fallbackGenre ? "Wikipedia概要から推定" : "" });
     const entityJson = await entityRes.json();
     const claims = entityJson.entities?.[entityId]?.claims?.P136 || [];
     const labels = claims.map(claim => {
@@ -1060,11 +1102,11 @@ async function fetchGenreInfo(artistName, fallbackText = "") {
       const entity = entityJson.entities?.[id];
       return entity?.labels?.ja?.value || entity?.labels?.en?.value || "";
     }).filter(Boolean);
-    if (labels.length) return { genre: labels.slice(0, 4).join(" / "), source: "Wikidata" };
+    if (labels.length) return setCachedMapValue(WIKI_GENRE_CACHE, cacheKey, { genre: labels.slice(0, 4).join(" / "), source: "Wikidata" });
   } catch (e) {
     console.warn("Wikidata genre lookup failed", e);
   }
-  return { genre: fallbackGenre, source: fallbackGenre ? "Wikipedia概要から推定" : "" };
+  return setCachedMapValue(WIKI_GENRE_CACHE, cacheKey, { genre: fallbackGenre, source: fallbackGenre ? "Wikipedia概要から推定" : "" });
 }
 
 function inferGenreFromText(text = "") {
