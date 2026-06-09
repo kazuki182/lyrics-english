@@ -204,8 +204,8 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v47-study-guide-page";
-  console.log("Lyrics English v47-study-guide-page loaded");
+  window.LYRICS_ENGLISH_VERSION = "v48-home-layout-study-first";
+  console.log("Lyrics English v48-home-layout-study-first loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
@@ -384,7 +384,7 @@ function renderSongs() {
 function latestSongsHtml(items) {
   const latest = [...(items || [])]
     .sort((a, b) => new Date(b.created_at || b.updated_at || 0) - new Date(a.created_at || a.updated_at || 0))
-    .slice(0, 5);
+    .slice(0, 3);
 
   if (!latest.length) return `<p class="mini">まだ曲が追加されていません。</p>`;
 
@@ -415,11 +415,33 @@ function artistGroupHtml(items) {
     acc[artist].push(song);
     return acc;
   }, {});
-  return Object.keys(groups).sort((a, b) => a.localeCompare(b)).map((artist, index) => `
-    <details class="artist-group" ${index === 0 ? "open" : ""}>
-      <summary><span>${esc(artist)}</span><span class="tag">${groups[artist].length}曲</span></summary>
-      <div class="artist-songs">${groups[artist].map(songListItem).join("")}</div>
-    </details>`).join("");
+  const artistNames = Object.keys(groups).sort((a, b) => a.localeCompare(b));
+  return `
+    <div class="artist-library-grid">
+      ${artistNames.map(artist => {
+        const group = groups[artist].sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+        const latest = [...group].sort((a, b) => new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0))[0];
+        return `
+          <section class="artist-library-card">
+            <button class="artist-library-head" data-action="open-song" data-id="${escAttr(latest?.id || group[0]?.id || "")}">
+              <div>
+                <h4>${esc(artist)}</h4>
+                <p class="mini">${group.length}曲登録</p>
+              </div>
+              <span class="latest-open">開く</span>
+            </button>
+            <div class="artist-library-songs">
+              ${group.slice(0, 4).map(s => `
+                <button class="artist-mini-song" data-action="open-song" data-id="${escAttr(s.id)}">
+                  <span>${esc(s.title || "Untitled")}</span>
+                  ${s.difficulty ? `<span class="tag">${esc(s.difficulty)}</span>` : ""}
+                </button>
+              `).join("")}
+              ${group.length > 4 ? `<p class="mini">ほか ${group.length - 4}曲</p>` : ""}
+            </div>
+          </section>`;
+      }).join("")}
+    </div>`;
 }
 
 function songListItem(s) {
@@ -630,7 +652,7 @@ function lineHtml(line, songId, songTitle, artistName) {
   const translation = g.translation || translateLine(lyric);
   const fromManual = line?.preposition === "ChatGPT手動解析" || line?.analysis_source === "manual_analysis";
   const realNotes = (Array.isArray(g.notes) ? g.notes : []).filter(isRealGrammarNote);
-  const notes = (realNotes.length ? realNotes : (fromManual ? [] : grammarNotes(lyric, g.points || []))).slice(0, 5);
+  const notes = (realNotes.length ? realNotes : (fromManual ? [] : grammarNotes(lyric, g.points || []))).slice(0, 3);
   const words = mergeLineWords(lyric, g.words).slice(0, 20);
   const examples = (g.examples && g.examples.length ? g.examples : similarExamples(lyric)).slice(0, 3);
   return `<div class="lyrics-line lyrics-line-simple">
@@ -3146,7 +3168,7 @@ function parseManualGrammarNotes(text) {
   return parseBulletLines(text)
     .map(item => String(item || "").replace(/^[-・*]\s*/, "").trim())
     .filter(isRealGrammarNote)
-    .slice(0, 5);
+    .slice(0, 3);
 }
 
 function isRealGrammarNote(note) {
@@ -3244,7 +3266,7 @@ function applyManualAnalysisGrammarBlocks(lines, manualText) {
 
     const existingGrammar = (line && line.grammar && typeof line.grammar === "object") ? line.grammar : {};
     const existingNotes = Array.isArray(existingGrammar.notes) ? existingGrammar.notes.filter(isRealGrammarNote) : [];
-    const mergedNotes = [...new Set([...block.notes, ...existingNotes].filter(isRealGrammarNote))].slice(0, 5);
+    const mergedNotes = [...new Set([...block.notes, ...existingNotes].filter(isRealGrammarNote))].slice(0, 3);
     const fixedTranslation = cleanTranslation(block.translation || line.translation || existingGrammar.translation || "", lyric) || line.translation || existingGrammar.translation || translateLine(lyric);
 
     return {
@@ -3418,7 +3440,7 @@ function ensureLineGrammarNotes(lyric, notes, grammarValues, index, globalGramma
     out = parseManualGrammarNotes(pickIndexedValue(grammarValues, index));
   }
   if (!out.length) out = grammarNotesForLyricFromManual(lyric, globalGrammarNotes);
-  return [...new Set(out.filter(isRealGrammarNote))].slice(0, 5);
+  return [...new Set(out.filter(isRealGrammarNote))].slice(0, 3);
 }
 
 function parseManualAnalysis(text) {
