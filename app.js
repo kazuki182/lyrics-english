@@ -19,7 +19,7 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v54-a4-print-pdf-save";
+const APP_PATCH_VERSION = "v56-a4-full-lyrics-one-page";
 let noteFilter = { type: "all", query: "" };
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
@@ -617,6 +617,7 @@ function songTestHtml(song, lines) {
   const grammarItems = collectSongTestGrammar(safeLines).slice(0, 8);
   const cloze = buildClozeLines(safeLines, wordItems);
   const date = new Date().toLocaleDateString("ja-JP");
+  const lyricPageClass = safeLines.length > 42 ? "test-page test-page-full-lyrics test-lyrics-ultra" : (safeLines.length > 30 ? "test-page test-page-full-lyrics test-lyrics-compact" : "test-page test-page-full-lyrics");
   return `
     <div class="test-toolbar no-print">
       <button class="btn secondary" type="button" data-action="open-song" data-id="${escAttr(song.id)}">曲詳細へ戻る</button>
@@ -626,7 +627,7 @@ function songTestHtml(song, lines) {
     <div class="test-notice no-print">
       個人学習用のテスト画面です。公開・配布・転載はしないでください。PDFファイルはアプリ側に保存せず、ブラウザの印刷画面で「PDFに保存」を選んでください。
     </div>
-    <section class="test-page">
+    <section class="${lyricPageClass}">
       <div class="test-page-head"><span>1 / 3</span><b>歌詞全文・和訳確認</b></div>
       <h2>${esc(song.title || "Untitled")}</h2>
       <p class="muted">${esc(song.artist_name || "")} / 作成日: ${esc(date)}</p>

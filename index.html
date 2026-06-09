@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Lyrics English</title>
-  <!-- v54 A4 print/PDF save layout / keep v45 word and grammar display logic -->
+  <!-- v56 A4 full lyrics one page print tuning / keep v45 word and grammar display logic -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="manifest" href="manifest.json">
   <style>
@@ -304,7 +304,127 @@
       .note-actions .btn:first-child{grid-column:1 / -1;}
     }
 
-</style>
+
+
+    /* v55: compact A4 print layout with safe left/right margins */
+    @media print{
+      @page{size:A4 portrait;margin:12mm 14mm 12mm 14mm;}
+      html,body{background:#fff!important;color:#111!important;width:auto!important;min-height:auto!important;}
+      body{font-size:8.8pt!important;line-height:1.24!important;}
+      .app{max-width:none!important;width:auto!important;margin:0!important;padding:0!important;}
+      #testView{width:100%!important;box-sizing:border-box!important;}
+      .test-page{
+        min-height:auto!important;
+        box-sizing:border-box!important;
+        padding:0!important;
+        margin:0!important;
+        page-break-after:always;
+        break-after:page;
+      }
+      .test-page:last-child{page-break-after:auto!important;break-after:auto!important;}
+      .test-page-head{font-size:8.4pt!important;margin-bottom:2.2mm!important;padding-bottom:1.4mm!important;}
+      .test-page h2{font-size:12.5pt!important;margin:0 0 1.2mm!important;line-height:1.18!important;}
+      .test-page h3{font-size:9.5pt!important;margin:2.6mm 0 1.2mm!important;line-height:1.2!important;}
+      .test-page .muted,.test-page .mini{font-size:7.6pt!important;line-height:1.25!important;}
+      .test-meta{gap:1.2mm!important;margin:1.2mm 0 1.8mm!important;}
+      .test-meta .tag{padding:.6mm 1.3mm!important;font-size:7.2pt!important;line-height:1.15!important;}
+      .test-lyrics-full{gap:.8mm!important;margin-top:1.8mm!important;}
+      .test-line-pair,.test-cloze-row{
+        grid-template-columns:6mm 1fr!important;
+        gap:1.5mm!important;
+        padding-bottom:.8mm!important;
+        border-bottom:1px solid #e2e2e2!important;
+      }
+      .test-line-no{font-size:6.8pt!important;padding-top:.4mm!important;}
+      .test-line-pair .en,.test-cloze-row .en{font-size:8.4pt!important;line-height:1.22!important;font-weight:650!important;}
+      .test-line-pair .jp{font-size:7.4pt!important;line-height:1.22!important;margin-top:.2mm!important;}
+      .cloze-blank{min-width:16mm!important;letter-spacing:.4px!important;}
+      .test-two-col{grid-template-columns:1fr 1fr!important;gap:4mm!important;}
+      .test-question{padding:1.4mm!important;margin-bottom:1.4mm!important;line-height:1.24!important;font-size:8pt!important;}
+      .test-expression{font-size:8pt!important;}
+      .test-blank{min-width:30mm!important;height:4.5mm!important;}
+      .test-long-blank{min-width:100%!important;height:4.5mm!important;}
+      .print-only-note{font-size:6.5pt!important;padding-top:1mm!important;}
+    }
+
+    /* v56: force full lyrics page to fit one A4 page as much as possible */
+    @media print{
+      .test-page-full-lyrics{
+        page-break-after:always!important;
+        break-after:page!important;
+      }
+      .test-page-full-lyrics .test-page-head{
+        font-size:7.6pt!important;
+        margin-bottom:1.2mm!important;
+        padding-bottom:.9mm!important;
+      }
+      .test-page-full-lyrics h2{
+        font-size:10.8pt!important;
+        margin:0 0 .6mm!important;
+        line-height:1.05!important;
+      }
+      .test-page-full-lyrics > .muted{
+        font-size:6.6pt!important;
+        line-height:1.08!important;
+        margin:.4mm 0!important;
+      }
+      .test-page-full-lyrics .test-meta{
+        margin:.6mm 0 .8mm!important;
+        gap:.8mm!important;
+      }
+      .test-page-full-lyrics .test-meta .tag{
+        font-size:6.1pt!important;
+        padding:.35mm .9mm!important;
+      }
+      .test-page-full-lyrics > .mini{
+        display:none!important;
+      }
+      .test-page-full-lyrics .test-lyrics-full{
+        display:block!important;
+        column-count:2!important;
+        column-gap:4mm!important;
+        margin-top:.8mm!important;
+      }
+      .test-page-full-lyrics.test-lyrics-ultra .test-lyrics-full{
+        column-count:3!important;
+        column-gap:3mm!important;
+      }
+      .test-page-full-lyrics .test-line-pair{
+        display:grid!important;
+        grid-template-columns:4.2mm 1fr!important;
+        gap:.9mm!important;
+        break-inside:avoid!important;
+        page-break-inside:avoid!important;
+        padding-bottom:.38mm!important;
+        margin:0!important;
+        border-bottom:1px solid #eee!important;
+      }
+      .test-page-full-lyrics .test-line-no{
+        font-size:5.8pt!important;
+        line-height:1.05!important;
+        padding-top:.15mm!important;
+      }
+      .test-page-full-lyrics .test-line-pair .en{
+        font-size:6.9pt!important;
+        line-height:1.08!important;
+        font-weight:650!important;
+      }
+      .test-page-full-lyrics .test-line-pair .jp{
+        font-size:6.05pt!important;
+        line-height:1.08!important;
+        margin-top:0!important;
+        color:#333!important;
+      }
+      .test-page-full-lyrics.test-lyrics-compact .test-line-pair .en{font-size:6.4pt!important;}
+      .test-page-full-lyrics.test-lyrics-compact .test-line-pair .jp{font-size:5.65pt!important;}
+      .test-page-full-lyrics.test-lyrics-ultra .test-line-pair{grid-template-columns:3.4mm 1fr!important;gap:.6mm!important;padding-bottom:.25mm!important;}
+      .test-page-full-lyrics.test-lyrics-ultra .test-line-no{font-size:5pt!important;}
+      .test-page-full-lyrics.test-lyrics-ultra .test-line-pair .en{font-size:5.65pt!important;line-height:1.04!important;}
+      .test-page-full-lyrics.test-lyrics-ultra .test-line-pair .jp{font-size:5pt!important;line-height:1.04!important;}
+    }
+
+
+  </style>
 </head>
 <body>
   <div id="login" class="login">
@@ -511,6 +631,6 @@
   <div id="wordTooltip" class="word-tooltip" role="tooltip"></div>
   <div id="toast" class="toast"></div>
   <script src="config.js"></script>
-  <script src="app.js?v=54-a4-print-pdf-save"></script>
+  <script src="app.js?v=56-a4-full-lyrics-one-page"></script>
 </body>
 </html>
