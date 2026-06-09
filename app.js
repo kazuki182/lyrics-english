@@ -19,7 +19,8 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v51-mobile-home-study-card";
+const APP_PATCH_VERSION = "v53-song-test-builder";
+let noteFilter = { type: "all", query: "" };
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
 const COMMON_PASSWORD = "12345";
@@ -205,8 +206,8 @@ const KNOWN_YOUTUBE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  window.LYRICS_ENGLISH_VERSION = "v50-save-lyric-lines";
-  console.log("Lyrics English v50-save-lyric-lines loaded");
+  window.LYRICS_ENGLISH_VERSION = APP_PATCH_VERSION;
+  console.log("Lyrics English " + APP_PATCH_VERSION + " loaded");
   bindStaticEvents();
   document.body.dataset.lyricsEnglishVersion = window.LYRICS_ENGLISH_VERSION;
   const savedUser = localStorage.getItem("currentUser");
@@ -233,6 +234,8 @@ function bindStaticEvents() {
   qs("#modalAddBtn").addEventListener("click", addSelectedWordToVocab);
   qs("#wordModal").addEventListener("click", e => { if (e.target.id === "wordModal") closeWordModal(); });
   document.addEventListener("click", handleDelegatedClick);
+  document.addEventListener("input", handleDelegatedInput);
+  document.addEventListener("change", handleDelegatedInput);
   document.addEventListener("mouseover", handleWordHover);
   document.addEventListener("focusin", handleWordHover);
   document.addEventListener("mouseout", handleWordHoverEnd);
@@ -260,11 +263,27 @@ function handleDelegatedClick(e) {
     if (name === "delete-vocab") deleteVocab(id);
     if (name === "save-lyric-line") saveLyricLineFromButton(action);
     if (name === "delete-saved-lyric") deleteSavedLyric(id);
+    if (name === "save-lyric-memo") saveLyricMemo(id);
+    if (name === "create-song-test") openSongTest(id);
+    if (name === "toggle-test-answers") toggleTestAnswers();
     return;
   }
   const word = e.target.closest("[data-word]");
   if (word) {
     openWordModal(word.dataset.word, word.dataset.songId, Number(word.dataset.lineNo), word.dataset.songTitle, word.dataset.artistName, word.dataset);
+  }
+}
+
+function handleDelegatedInput(e) {
+  const el = e.target;
+  if (!el) return;
+  if (el.id === "noteSearch") {
+    noteFilter.query = String(el.value || "");
+    renderVocab();
+  }
+  if (el.id === "noteTypeFilter") {
+    noteFilter.type = String(el.value || "all");
+    renderVocab();
   }
 }
 
@@ -553,10 +572,180 @@ function openSong(id) {
       <div id="artistInfo" class="mini">アーティスト情報を取得中...</div>
     </div>
     ${analysisState}
+    <div class="card no-print">
+      <h3 class="section-title">曲別テスト</h3>
+      <p class="mini">この曲の歌詞・単語・文法から、個人学習用のリスニングテストを作れます。PDF保存はまだ行わず、まず画面上で内容を確認します。</p>
+      <div class="actions">
+        <button class="btn blue" type="button" data-action="create-song-test" data-id="${escAttr(s.id)}">この曲でテストを作る</button>
+      </div>
+    </div>
     <div class="card"><h3 class="section-title">歌詞解説</h3><p class="mini">単語に触れると意味・使い方・例文が出ます。クリックすると単語帳追加画面が開きます。</p>${lines.map(l => lineHtml(l, s.id, s.title, s.artist_name)).join("") || "<p class='mini'>歌詞がありません。</p>"}</div>
     ${s.manual_analysis ? `<div class="card"><details class="manual-analysis-toggle"><summary>ChatGPT解析結果を開く</summary><p class="mini">ChatGPTで作成した解析結果です。必要なときだけ開いて確認できます。</p><div class="manual-analysis">${nl(s.manual_analysis)}</div></details></div>` : ""}`;
   showScreen("detail");
+
   enrichSongDetail(s, youtubeThumb, savedCover);
+}
+
+function getSongDisplayLines(song) {
+  const storedLyricLines = Array.isArray(song?.lyric_lines) ? song.lyric_lines : [];
+  const rawForManual = (song?.lyrics_raw && String(song.lyrics_raw).trim())
+    ? song.lyrics_raw
+    : storedLyricLines.map(l => l?.lyric || "").filter(Boolean).join("\n");
+  const parsedManualDetailLines = parseManualAnalysisForRaw(song?.manual_analysis || "", rawForManual);
+  const manualDetailLines = hydrateDetailLinesFromManualAnalysis(parsedManualDetailLines, song, rawForManual);
+  const baseLines = manualDetailLines.length
+    ? manualDetailLines
+    : storedLyricLines.map((line, i) => normalizeAIAnalysisLine(line, i));
+  const songWordData = getSongWordData(song);
+  const linesBeforeManualBlockFix = enrichLinesWithSongWordData(baseLines, songWordData);
+  return applyManualAnalysisGrammarBlocks(linesBeforeManualBlockFix, song?.manual_analysis || "");
+}
+
+function openSongTest(id) {
+  const song = songs.find(x => x.id === id);
+  if (!song) { toast("曲が見つかりません"); return; }
+  const lines = getSongDisplayLines(song);
+  qs("#testView").innerHTML = songTestHtml(song, lines);
+  showScreen("test");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function songTestHtml(song, lines) {
+  const safeLines = (Array.isArray(lines) ? lines : []).filter(l => String(l.lyric || "").trim());
+  const wordItems = collectSongTestWords(song, safeLines).slice(0, 12);
+  const grammarItems = collectSongTestGrammar(safeLines).slice(0, 8);
+  const cloze = buildClozeLines(safeLines, wordItems);
+  const date = new Date().toLocaleDateString("ja-JP");
+  return `
+    <div class="test-toolbar no-print">
+      <button class="btn secondary" type="button" data-action="open-song" data-id="${escAttr(song.id)}">曲詳細へ戻る</button>
+      <button class="btn blue" type="button" data-action="toggle-test-answers">答え表示 / 非表示</button>
+    </div>
+    <div class="test-notice no-print">
+      個人学習用のテスト画面です。公開・配布・転載はしないでください。PDFファイルはアプリ側に保存しません。
+    </div>
+    <section class="test-page">
+      <div class="test-page-head"><span>1 / 3</span><b>歌詞全文・和訳確認</b></div>
+      <h2>${esc(song.title || "Untitled")}</h2>
+      <p class="muted">${esc(song.artist_name || "")} / 作成日: ${esc(date)}</p>
+      <div class="test-meta">
+        <span class="tag">ジャンル: ${esc(song.genre || "未設定")}</span>
+        <span class="tag">難易度: ${esc(song.difficulty || "未設定")}</span>
+      </div>
+      <p class="mini">まず意味を確認します。直訳よりも、日本語として自然な理解を優先してください。</p>
+      <div class="test-lyrics-full">
+        ${safeLines.map((line, i) => `
+          <div class="test-line-pair">
+            <div class="test-line-no">${i + 1}</div>
+            <div>
+              <div class="en">${esc(line.lyric || "")}</div>
+              <div class="jp">${esc(line.translation || line.grammar?.translation || "")}</div>
+            </div>
+          </div>
+        `).join("") || `<p class="mini">歌詞データがありません。</p>`}
+      </div>
+    </section>
+    <section class="test-page">
+      <div class="test-page-head"><span>2 / 3</span><b>歌詞虫食いリスニング</b></div>
+      <h2>Listening Cloze Test</h2>
+      <p class="mini">曲を流しながら、空欄に聞こえた単語を書きます。重要単語・動詞・感情表現を中心に空欄化しています。</p>
+      <div class="test-lyrics-full">
+        ${cloze.map((item, i) => `
+          <div class="test-cloze-row">
+            <div class="test-line-no">${i + 1}</div>
+            <div>
+              <div class="en">${item.html}</div>
+              <div class="test-answer is-hidden">答え：${esc(item.answers.join(" / ") || "-")}</div>
+            </div>
+          </div>
+        `).join("") || `<p class="mini">虫食いにできる歌詞がありません。</p>`}
+      </div>
+    </section>
+    <section class="test-page">
+      <div class="test-page-head"><span>3 / 3</span><b>単語・文法テスト</b></div>
+      <h2>Vocabulary & Grammar Test</h2>
+      <div class="test-two-col">
+        <div>
+          <h3>Part 1：単語テスト</h3>
+          ${wordItems.length ? wordItems.map((w, i) => `
+            <div class="test-question">
+              <b>Q${i + 1}.</b> ${esc(w.word)} の意味を書きなさい。<br>
+              <span class="test-blank">　　　　　　　　　　　　　</span>
+              <div class="test-answer is-hidden">答え：${esc(w.meaning || "")}</div>
+            </div>
+          `).join("") : `<p class="mini">単語データがありません。</p>`}
+        </div>
+        <div>
+          <h3>Part 2：文法テスト</h3>
+          ${grammarItems.length ? grammarItems.map((note, i) => `
+            <div class="test-question">
+              <b>Q${i + 1}.</b> 次の表現を説明しなさい。<br>
+              <span class="test-expression">${esc(grammarQuestionPrompt(note))}</span><br>
+              <span class="test-blank">　　　　　　　　　　　　　</span>
+              <div class="test-answer is-hidden">答え：${esc(note)}</div>
+            </div>
+          `).join("") : `<p class="mini">文法ポイントがありません。</p>`}
+          <div class="test-question">
+            <b>自由作文</b><br>この曲で覚えた表現を1つ使って、自分の例文を作りなさい。<br>
+            <span class="test-blank test-long-blank">　　　　　　　　　　　　　　　　　　　　　　　　　</span>
+          </div>
+        </div>
+      </div>
+    </section>`;
+}
+
+function collectSongTestWords(song, lines) {
+  const map = new Map();
+  const add = item => {
+    const word = normalizeWord(item?.word || "");
+    if (!word || STOP_WORDS.has(word) || BASIC_TOOLTIP_EXCLUDE.has(word)) return;
+    const meaning = String(item?.meaning || "").trim();
+    if (!meaning) return;
+    if (!map.has(word)) map.set(word, { word, meaning, usage: item?.usage || "", example: item?.example || "" });
+  };
+  getSongWordData(song).forEach(add);
+  (lines || []).forEach(line => {
+    const words = Array.isArray(line?.grammar?.words) ? line.grammar.words : [];
+    words.forEach(add);
+  });
+  return [...map.values()];
+}
+
+function collectSongTestGrammar(lines) {
+  const notes = [];
+  (lines || []).forEach(line => {
+    const arr = Array.isArray(line?.grammar?.notes) ? line.grammar.notes : [];
+    arr.filter(isRealGrammarNote).forEach(note => notes.push(String(note).trim()));
+  });
+  return [...new Set(notes)].filter(Boolean);
+}
+
+function buildClozeLines(lines, wordItems) {
+  const priority = new Set((wordItems || []).map(w => normalizeWord(w.word)).filter(Boolean));
+  return (lines || []).map(line => {
+    const lyric = String(line.lyric || "");
+    const used = [];
+    const html = tokenizePreservingSpace(lyric).map(part => {
+      if (!/^[A-Za-z][A-Za-z'’]*$/.test(part)) return esc(part);
+      const key = normalizeWord(part);
+      const shouldBlank = used.length < 2 && !STOP_WORDS.has(key) && !BASIC_TOOLTIP_EXCLUDE.has(key) &&
+        (priority.has(key) || priority.has(key.replace(/s$/, "")) || LEARNING_WORDS.has(key) || /ing$|ed$/.test(key));
+      if (!shouldBlank) return esc(part);
+      used.push(part);
+      return `<span class="cloze-blank">${"_".repeat(Math.max(5, Math.min(12, part.length + 2)))}</span>`;
+    }).join("");
+    return { html: html || esc(lyric), answers: used };
+  });
+}
+
+function grammarQuestionPrompt(note) {
+  const text = String(note || "");
+  const head = text.split(/[：:]/)[0].trim();
+  return head || text.slice(0, 40);
+}
+
+function toggleTestAnswers() {
+  document.querySelectorAll("#testView .test-answer").forEach(el => el.classList.toggle("is-hidden"));
 }
 
 
@@ -2799,9 +2988,58 @@ async function deleteSavedLyric(id) {
   toast("保存フレーズを削除しました");
 }
 
+function noteMatches(item, query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return true;
+  return [
+    item.word, item.meaning, item.lyric, item.translation, item.song_title,
+    item.artist_name, item.memo, item.example, item.part_of_speech
+  ].some(v => String(v || "").toLowerCase().includes(q));
+}
+
+function noteSummaryText() {
+  const lyricCount = savedLyrics.length;
+  const wordCount = vocab.length;
+  return `保存単語 ${wordCount}件 / 保存フレーズ ${lyricCount}件`;
+}
+
+async function saveLyricMemo(id) {
+  const memoEl = document.querySelector(`[data-lyric-memo="${CSS.escape(String(id || ""))}"]`);
+  if (!memoEl) { toast("メモ欄が見つかりません"); return; }
+  const memo = String(memoEl.value || "").trim();
+  const { error } = await supabaseClient.from("saved_lyrics").update({ memo }).eq("id", id);
+  if (error) { toast("メモ保存失敗: " + error.message); return; }
+  await fetchSavedLyrics();
+  renderVocab();
+  toast("メモを保存しました");
+}
+
 function renderVocab() {
-  const vocabHtml = vocab.length ? `<h3 class="section-title">保存単語</h3>` + vocab.map(x => `
-    <div class="song-item">
+  const type = noteFilter.type || "all";
+  const query = noteFilter.query || "";
+  const showWords = type === "all" || type === "words";
+  const showLyrics = type === "all" || type === "lyrics";
+  const filteredWords = showWords ? vocab.filter(x => noteMatches(x, query)) : [];
+  const filteredLyrics = showLyrics ? savedLyrics.filter(x => noteMatches(x, query)) : [];
+
+  const controlsHtml = `
+    <div class="note-tools no-print">
+      <div>
+        <h3 class="section-title">学習ノート</h3>
+        <p class="mini">${esc(noteSummaryText())}</p>
+      </div>
+      <div class="note-filters">
+        <input id="noteSearch" class="note-search" type="search" placeholder="単語・歌詞・曲名で検索" value="${escAttr(query)}">
+        <select id="noteTypeFilter" class="note-select">
+          <option value="all" ${type === "all" ? "selected" : ""}>すべて</option>
+          <option value="words" ${type === "words" ? "selected" : ""}>保存単語</option>
+          <option value="lyrics" ${type === "lyrics" ? "selected" : ""}>保存フレーズ</option>
+        </select>
+      </div>
+    </div>`;
+
+  const vocabHtml = showWords ? (filteredWords.length ? `<h3 class="section-title">保存単語</h3>` + filteredWords.map(x => `
+    <div class="song-item note-card note-word-card">
       <div>
         <h4>${esc(x.word)}</h4>
         <div>${esc(x.meaning)}</div>
@@ -2810,23 +3048,25 @@ function renderVocab() {
         <div class="mini">${esc(x.example || x.memo || "")}</div>
       </div>
       <button class="btn red no-print" data-action="delete-vocab" data-id="${escAttr(x.id)}">削除</button>
-    </div>`).join("") : `<h3 class="section-title">保存単語</h3><p class="mini">単語はまだありません。</p>`;
+    </div>`).join("") : `<h3 class="section-title">保存単語</h3><p class="mini">条件に合う単語はありません。</p>`) : "";
 
-  const lyricHtml = savedLyrics.length ? `<h3 class="section-title" style="margin-top:28px">保存フレーズ</h3>` + savedLyrics.map(x => `
-    <div class="song-item saved-lyric-card">
-      <div>
+  const lyricHtml = showLyrics ? (filteredLyrics.length ? `<h3 class="section-title" style="margin-top:28px">保存フレーズ</h3>` + filteredLyrics.map(x => `
+    <div class="song-item saved-lyric-card note-card">
+      <div class="note-main">
         <h4>${esc(x.lyric || "")}</h4>
         <div class="jp"><b>自然な和訳：</b>${esc(x.translation || "")}</div>
         <div class="mini">${esc(x.song_title || "")} / ${esc(x.artist_name || "")} / ${fmt(x.created_at)}</div>
-        ${x.memo ? `<div class="mini">メモ: ${esc(x.memo)}</div>` : ""}
+        <label class="mini note-memo-label">自分用メモ</label>
+        <textarea class="note-memo" data-lyric-memo="${escAttr(x.id)}" placeholder="例：drive + 人 + crazy は会話で使えそう">${esc(x.memo || "")}</textarea>
       </div>
-      <div class="actions">
+      <div class="actions note-actions">
+        <button class="btn secondary no-print" data-action="save-lyric-memo" data-id="${escAttr(x.id)}">メモ保存</button>
         ${x.song_id ? `<button class="btn secondary no-print" data-action="open-song" data-id="${escAttr(x.song_id)}">曲を開く</button>` : ""}
         <button class="btn red no-print" data-action="delete-saved-lyric" data-id="${escAttr(x.id)}">削除</button>
       </div>
-    </div>`).join("") : `<h3 class="section-title" style="margin-top:28px">保存フレーズ</h3><p class="mini">保存した歌詞はまだありません。曲詳細で「この歌詞を保存」を押すとここに表示されます。</p>`;
+    </div>`).join("") : `<h3 class="section-title" style="margin-top:28px">保存フレーズ</h3><p class="mini">条件に合う保存フレーズはありません。曲詳細で「この歌詞を保存」を押すとここに表示されます。</p>`) : "";
 
-  qs("#vocabView").innerHTML = vocabHtml + lyricHtml;
+  qs("#vocabView").innerHTML = controlsHtml + vocabHtml + lyricHtml;
 }
 
 async function deleteVocab(id) {
