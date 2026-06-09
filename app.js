@@ -19,7 +19,7 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v53-song-test-builder";
+const APP_PATCH_VERSION = "v54-a4-print-pdf-save";
 let noteFilter = { type: "all", query: "" };
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
@@ -266,6 +266,7 @@ function handleDelegatedClick(e) {
     if (name === "save-lyric-memo") saveLyricMemo(id);
     if (name === "create-song-test") openSongTest(id);
     if (name === "toggle-test-answers") toggleTestAnswers();
+    if (name === "print-test") window.print();
     return;
   }
   const word = e.target.closest("[data-word]");
@@ -620,9 +621,10 @@ function songTestHtml(song, lines) {
     <div class="test-toolbar no-print">
       <button class="btn secondary" type="button" data-action="open-song" data-id="${escAttr(song.id)}">曲詳細へ戻る</button>
       <button class="btn blue" type="button" data-action="toggle-test-answers">答え表示 / 非表示</button>
+      <button class="btn green" type="button" data-action="print-test">A4で印刷 / PDF保存</button>
     </div>
     <div class="test-notice no-print">
-      個人学習用のテスト画面です。公開・配布・転載はしないでください。PDFファイルはアプリ側に保存しません。
+      個人学習用のテスト画面です。公開・配布・転載はしないでください。PDFファイルはアプリ側に保存せず、ブラウザの印刷画面で「PDFに保存」を選んでください。
     </div>
     <section class="test-page">
       <div class="test-page-head"><span>1 / 3</span><b>歌詞全文・和訳確認</b></div>
@@ -691,7 +693,8 @@ function songTestHtml(song, lines) {
           </div>
         </div>
       </div>
-    </section>`;
+    </section>
+    <div class="print-only-note">個人学習用です。公開・配布・転載はしないでください。PDFはアプリ側に保存されません。</div>`;
 }
 
 function collectSongTestWords(song, lines) {

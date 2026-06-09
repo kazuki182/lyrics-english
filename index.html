@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Lyrics English</title>
-  <!-- v53 song test builder / keep v45 word and grammar display logic -->
+  <!-- v54 A4 print/PDF save layout / keep v45 word and grammar display logic -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="manifest" href="manifest.json">
   <style>
@@ -157,6 +157,55 @@
     .test-expression{color:#ffe9a8;font-weight:900;}
     @media(max-width:760px){.test-page{padding:16px;border-radius:18px}.test-two-col{grid-template-columns:1fr}.test-line-pair,.test-cloze-row{grid-template-columns:28px 1fr}.test-line-pair .en,.test-cloze-row .en{font-size:16px}.test-line-pair .jp{font-size:13px}.cloze-blank{min-width:58px}}
 
+
+
+    /* v54: A4 print / PDF save layout for song tests */
+    .test-print-tip{font-size:12px;color:var(--muted);line-height:1.6;margin-top:8px;}
+    @media print{
+      @page{size:A4 portrait;margin:10mm;}
+      html,body{background:#fff!important;color:#111!important;width:210mm;min-height:297mm;}
+      body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:10.5pt;line-height:1.45;}
+      .top,.tabbar,.no-print,.modal,.toast,.word-tooltip{display:none!important;}
+      .app{max-width:none!important;width:auto!important;margin:0!important;padding:0!important;}
+      .screen{display:none!important;}
+      #test.screen{display:block!important;}
+      #testView{display:block!important;width:100%!important;}
+      .test-page{
+        display:block!important;
+        min-height:267mm;
+        page-break-after:always;
+        break-after:page;
+        background:#fff!important;
+        color:#111!important;
+        border:0!important;
+        border-radius:0!important;
+        box-shadow:none!important;
+        padding:0!important;
+        margin:0!important;
+      }
+      .test-page:last-child{page-break-after:auto;break-after:auto;}
+      .test-page-head{color:#111!important;border-bottom:1px solid #111!important;margin-bottom:4mm!important;padding-bottom:2.5mm!important;font-size:10pt!important;}
+      .test-page h2{font-size:16pt!important;margin:0 0 2mm!important;color:#111!important;}
+      .test-page h3{font-size:12pt!important;margin:5mm 0 2mm!important;color:#111!important;}
+      .test-page .muted,.test-page .mini{color:#333!important;font-size:9pt!important;line-height:1.45!important;}
+      .test-meta{gap:2mm!important;margin:2mm 0 3mm!important;}
+      .test-meta .tag{background:#fff!important;color:#111!important;border:1px solid #444!important;padding:1mm 2mm!important;font-size:8.5pt!important;}
+      .test-lyrics-full{gap:1.6mm!important;margin-top:3mm!important;}
+      .test-line-pair,.test-cloze-row{grid-template-columns:8mm 1fr!important;gap:2.5mm!important;border-bottom:1px solid #ddd!important;padding-bottom:1.6mm!important;page-break-inside:avoid;break-inside:avoid;}
+      .test-line-no{color:#555!important;font-size:8pt!important;padding-top:1mm!important;}
+      .test-line-pair .en,.test-cloze-row .en{color:#111!important;font-size:10.5pt!important;line-height:1.45!important;font-weight:700!important;}
+      .test-line-pair .jp{color:#333!important;font-size:9pt!important;line-height:1.45!important;margin-top:.5mm!important;}
+      .cloze-blank{color:#111!important;min-width:20mm!important;border-bottom:1px solid #111!important;letter-spacing:1px!important;}
+      .test-two-col{grid-template-columns:1fr 1fr!important;gap:7mm!important;align-items:start!important;}
+      .test-question{background:#fff!important;color:#111!important;border:1px solid #ddd!important;border-radius:0!important;padding:2.5mm!important;margin-bottom:2.5mm!important;page-break-inside:avoid;break-inside:avoid;line-height:1.45!important;}
+      .test-expression{color:#111!important;font-weight:700!important;}
+      .test-blank{border-bottom:1px solid #111!important;min-width:42mm!important;height:6mm!important;}
+      .test-long-blank{min-width:100%!important;}
+      .test-answer{display:none!important;}
+      .print-only-note{display:block!important;position:fixed;bottom:0;left:0;right:0;border-top:1px solid #bbb;padding-top:2mm;font-size:7.5pt;color:#555!important;background:#fff!important;}
+    }
+    .print-only-note{display:none;}
+
     .note-tools{
       display:flex;
       align-items:flex-end;
@@ -195,7 +244,56 @@
     .note-actions{display:flex;flex-direction:column;gap:8px;align-items:stretch;}
     .note-actions .btn{width:100%;justify-content:center;}
     @media(max-width:760px){
-      .note-tools{display:block;}
+  
+
+    /* v54: A4 print / PDF save layout for song tests */
+    .test-print-tip{font-size:12px;color:var(--muted);line-height:1.6;margin-top:8px;}
+    @media print{
+      @page{size:A4 portrait;margin:10mm;}
+      html,body{background:#fff!important;color:#111!important;width:210mm;min-height:297mm;}
+      body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:10.5pt;line-height:1.45;}
+      .top,.tabbar,.no-print,.modal,.toast,.word-tooltip{display:none!important;}
+      .app{max-width:none!important;width:auto!important;margin:0!important;padding:0!important;}
+      .screen{display:none!important;}
+      #test.screen{display:block!important;}
+      #testView{display:block!important;width:100%!important;}
+      .test-page{
+        display:block!important;
+        min-height:267mm;
+        page-break-after:always;
+        break-after:page;
+        background:#fff!important;
+        color:#111!important;
+        border:0!important;
+        border-radius:0!important;
+        box-shadow:none!important;
+        padding:0!important;
+        margin:0!important;
+      }
+      .test-page:last-child{page-break-after:auto;break-after:auto;}
+      .test-page-head{color:#111!important;border-bottom:1px solid #111!important;margin-bottom:4mm!important;padding-bottom:2.5mm!important;font-size:10pt!important;}
+      .test-page h2{font-size:16pt!important;margin:0 0 2mm!important;color:#111!important;}
+      .test-page h3{font-size:12pt!important;margin:5mm 0 2mm!important;color:#111!important;}
+      .test-page .muted,.test-page .mini{color:#333!important;font-size:9pt!important;line-height:1.45!important;}
+      .test-meta{gap:2mm!important;margin:2mm 0 3mm!important;}
+      .test-meta .tag{background:#fff!important;color:#111!important;border:1px solid #444!important;padding:1mm 2mm!important;font-size:8.5pt!important;}
+      .test-lyrics-full{gap:1.6mm!important;margin-top:3mm!important;}
+      .test-line-pair,.test-cloze-row{grid-template-columns:8mm 1fr!important;gap:2.5mm!important;border-bottom:1px solid #ddd!important;padding-bottom:1.6mm!important;page-break-inside:avoid;break-inside:avoid;}
+      .test-line-no{color:#555!important;font-size:8pt!important;padding-top:1mm!important;}
+      .test-line-pair .en,.test-cloze-row .en{color:#111!important;font-size:10.5pt!important;line-height:1.45!important;font-weight:700!important;}
+      .test-line-pair .jp{color:#333!important;font-size:9pt!important;line-height:1.45!important;margin-top:.5mm!important;}
+      .cloze-blank{color:#111!important;min-width:20mm!important;border-bottom:1px solid #111!important;letter-spacing:1px!important;}
+      .test-two-col{grid-template-columns:1fr 1fr!important;gap:7mm!important;align-items:start!important;}
+      .test-question{background:#fff!important;color:#111!important;border:1px solid #ddd!important;border-radius:0!important;padding:2.5mm!important;margin-bottom:2.5mm!important;page-break-inside:avoid;break-inside:avoid;line-height:1.45!important;}
+      .test-expression{color:#111!important;font-weight:700!important;}
+      .test-blank{border-bottom:1px solid #111!important;min-width:42mm!important;height:6mm!important;}
+      .test-long-blank{min-width:100%!important;}
+      .test-answer{display:none!important;}
+      .print-only-note{display:block!important;position:fixed;bottom:0;left:0;right:0;border-top:1px solid #bbb;padding-top:2mm;font-size:7.5pt;color:#555!important;background:#fff!important;}
+    }
+    .print-only-note{display:none;}
+
+    .note-tools{display:block;}
       .note-filters{display:grid;grid-template-columns:1fr;gap:8px;margin-top:12px;}
       .note-search,.note-select{width:100%;min-width:0;font-size:14px;}
       .note-card{display:block!important;padding:14px!important;}
@@ -413,6 +511,6 @@
   <div id="wordTooltip" class="word-tooltip" role="tooltip"></div>
   <div id="toast" class="toast"></div>
   <script src="config.js"></script>
-  <script src="app.js?v=53-song-test-builder"></script>
+  <script src="app.js?v=54-a4-print-pdf-save"></script>
 </body>
 </html>
