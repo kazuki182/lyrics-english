@@ -19,7 +19,7 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v56-a4-full-lyrics-one-page";
+const APP_PATCH_VERSION = "v57-artist-profile-source-fix";
 let noteFilter = { type: "all", query: "" };
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
@@ -782,11 +782,19 @@ function getAnalysisStateHtml(song, lines, displaySource) {
 }
 
 async function enrichSongDetail(song, youtubeThumb, savedCover = "") {
+  const savedArtistInfo = buildArtistInfoFromSong(song);
+  if (savedArtistInfo) renderArtistInfo(savedArtistInfo);
+
   const [artistInfo, coverUrl] = await Promise.all([
     fetchArtistInfo(song.artist_name),
     fetchCoverArt(song.title, song.artist_name)
   ]);
-  renderArtistInfo(artistInfo);
+
+  // v57: Supabaseのartist_profileを最優先で表示する。
+  // artist_infoが{}など空の場合やWikipedia取得失敗時に、保存済みプロフィールを上書きしない。
+  const finalArtistInfo = mergeArtistInfoForDisplay(song, artistInfo, savedArtistInfo);
+  renderArtistInfo(finalArtistInfo);
+
   const cover = qs("#coverImage");
   if (cover) {
     cover.src = savedCover || coverUrl || youtubeThumb || placeholderImage();
@@ -795,6 +803,66 @@ async function enrichSongDetail(song, youtubeThumb, savedCover = "") {
       else cover.src = placeholderImage();
     };
   }
+}
+
+function isUsefulArtistProfileText(text) {
+  const value = String(text || "").trim();
+  if (!value) return false;
+  if (/^\{\s*\}$/.test(value)) return false;
+  if (/自動取得できませんでした|取得できませんでした/.test(value)) return false;
+  return value.length >= 20;
+}
+
+function extractArtistInfoText(info) {
+  if (!info) return "";
+  if (typeof info === "string") return info.trim();
+  if (typeof info === "object") {
+    return String(info.extract || info.profile || info.description || info.text || "").trim();
+  }
+  return "";
+}
+
+function buildArtistInfoFromSong(song) {
+  const profile = String(song?.artist_profile || "").trim();
+  if (!isUsefulArtistProfileText(profile)) return null;
+  return {
+    name: song?.artist_name || "アーティスト",
+    extract: getJapaneseArtistProfile(song?.artist_name || "アーティスト", profile),
+    image: song?.artist_image_url || "",
+    url: song?.artist_wikipedia_url || "",
+    genre: song?.genre || "",
+    genreSource: song?.genre ? "保存済み" : ""
+  };
+}
+
+function mergeArtistInfoForDisplay(song, fetchedInfo, savedInfo = null) {
+  const saved = savedInfo || buildArtistInfoFromSong(song);
+  const fetchedText = extractArtistInfoText(fetchedInfo);
+  const fetchedIsUseful = isUsefulArtistProfileText(fetchedText);
+
+  if (saved) {
+    return {
+      ...fetchedInfo,
+      ...saved,
+      // 画像やWikipedia URLは取得できていれば使うが、本文は保存済みartist_profileを優先する。
+      image: fetchedInfo?.image || saved.image || "",
+      url: fetchedInfo?.url || saved.url || "",
+      genre: song?.genre || fetchedInfo?.genre || saved.genre || "",
+      genreSource: song?.genre ? "保存済み" : (fetchedInfo?.genreSource || saved.genreSource || "")
+    };
+  }
+
+  if (fetchedInfo && fetchedIsUseful) return fetchedInfo;
+
+  const artist = song?.artist_name || fetchedInfo?.name || "アーティスト";
+  return {
+    name: artist,
+    extract: "アーティスト情報を自動取得できませんでした。",
+    image: fetchedInfo?.image || "",
+    url: fetchedInfo?.url || "",
+    genre: song?.genre || fetchedInfo?.genre || "",
+    genreSource: song?.genre ? "保存済み" : (fetchedInfo?.genreSource || "")
+  };
 }
 
 function renderArtistInfo(info) {
