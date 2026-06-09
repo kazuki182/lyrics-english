@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Lyrics English</title>
-  <!-- v49 artist info 404 guard / keep v45 word and grammar display logic -->
+  <!-- v51 mobile home study card / keep v45 word and grammar display logic -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="manifest" href="manifest.json">
   <style>
@@ -79,6 +79,62 @@
     .study-home-card{display:flex;justify-content:space-between;align-items:center;gap:16px}.study-home-card .btn{flex:0 0 auto}.artist-library-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}.artist-library-card{border:1px solid var(--line);background:rgba(255,255,255,.045);border-radius:18px;padding:14px}.artist-library-head{width:100%;display:flex;justify-content:space-between;align-items:center;gap:10px;background:transparent;color:inherit;text-align:left;padding:0 0 10px;border-bottom:1px solid var(--line)}.artist-library-head h4{margin:0 0 4px;font-size:18px}.artist-library-songs{padding-top:10px}.artist-mini-song{width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:14px;color:var(--text);padding:10px 12px;margin-top:8px}.artist-mini-song span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.saved-lyric-card h4{font-size:18px;line-height:1.55;margin-bottom:8px}.saved-lyric-card .jp{color:#ffe9a8;margin:4px 0 8px}
     .danger-tag { background:#5b2330; color:#ffd5df; border-color:#8b3a4a; }
     .warn-text { color:#ffd28a; margin-top:10px; }
+
+
+    /* v51: mobile-first compact study guide card on HOME */
+    .study-home-card{
+      width:100%;
+      text-align:left;
+      color:var(--text);
+      text-decoration:none;
+      cursor:pointer;
+    }
+    .study-home-main{min-width:0;}
+    .study-home-label{
+      color:#ffe9a8;
+      font-size:13px;
+      font-weight:900;
+      margin-bottom:5px;
+    }
+    .study-home-copy{
+      font-size:18px;
+      line-height:1.35;
+      font-weight:900;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+    .study-home-open{
+      flex:0 0 auto;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-width:58px;
+      min-height:38px;
+      padding:8px 12px;
+      border-radius:999px;
+      background:linear-gradient(135deg,#71b7ff,#9dccff);
+      color:#07111f;
+      font-size:14px;
+      font-weight:900;
+    }
+    @media(max-width:760px){
+      .study-home-card{
+        display:flex!important;
+        align-items:center;
+        justify-content:space-between;
+        gap:10px;
+        padding:13px 14px!important;
+        border-radius:18px!important;
+        min-height:72px;
+        margin-bottom:12px!important;
+      }
+      .study-home-label{font-size:12px;margin-bottom:3px;}
+      .study-home-copy{font-size:16px;}
+      .study-home-open{min-width:50px;min-height:34px;padding:7px 10px;font-size:13px;}
+      .hero .actions .btn[data-screen="study"]{display:none;}
+    }
+
 </style>
 </head>
 <body>
@@ -104,13 +160,13 @@
         <p class="muted">歌詞の意味、単語、文法、音のつながりをまとめて学べます。</p>
         <div class="actions"><button class="btn" data-screen="add">曲を追加</button><button class="btn secondary" data-screen="vocab">単語帳</button><button class="btn blue" data-screen="study">英語勉強方法</button></div>
       </div>
-      <div class="card study-home-card">
-        <div>
-          <h3 class="section-title">英語勉強方法</h3>
-          <p class="mini"><strong>意味を理解する → 音で覚える → 自分で使う</strong> の順番で、好きな曲を英語表現として身につけます。</p>
+      <button class="card study-home-card" type="button" data-screen="study">
+        <div class="study-home-main">
+          <div class="study-home-label">英語勉強方法</div>
+          <div class="study-home-copy">意味 → 音 → 自分で使う</div>
         </div>
-        <button class="btn blue" data-screen="study">勉強方法を見る</button>
-      </div>
+        <span class="study-home-open">見る</span>
+      </button>
       <div class="grid">
         <div>
           <div class="card"><h3 class="section-title">最近追加された曲</h3><p class="mini">最新3曲を表示します。曲名カードを押すと詳細ページを開けます。</p><div id="latestSongList"><p class="mini">読み込み中...</p></div></div>
@@ -284,6 +340,6 @@
   <div id="wordTooltip" class="word-tooltip" role="tooltip"></div>
   <div id="toast" class="toast"></div>
   <script src="config.js"></script>
-  <script src="app.js?v=50-save-lyric-lines"></script>
+  <script src="app.js?v=51-mobile-home-study-card"></script>
 </body>
 </html>
