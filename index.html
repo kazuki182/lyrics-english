@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Lyrics English</title>
-  <!-- v59 back to top on detail page / keep word grammar print logic -->
+  <!-- v61 home feature updates / realtime compact -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="manifest" href="manifest.json">
   <style>
@@ -74,6 +74,30 @@
 
     @media print{.top,.tabbar,.no-print,.screen:not(.active),.modal{display:none!important}body{background:white;color:#111}.app{padding:0}.card{box-shadow:none;border:0;background:white;color:#111}@page{size:A4;margin:14mm}}
   .plain-word{opacity:.72;cursor:default}
+
+
+    /* v61: HOME feature updates and compact realtime card */
+    .home-side-panel{display:grid;gap:12px;}
+    .feature-update-card{border-color:rgba(230,195,116,.34);background:linear-gradient(180deg,rgba(230,195,116,.10),rgba(11,18,32,.88));}
+    .feature-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
+    .feature-head .section-title{margin:0;}
+    .feature-badge{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:linear-gradient(135deg,#e6c374,#ffe7a4);color:#07111f;font-size:11px;font-weight:900;padding:4px 8px;}
+    .feature-update-item{display:grid;grid-template-columns:auto 1fr;gap:10px;border-top:1px solid rgba(255,255,255,.10);padding:10px 0;}
+    .feature-update-item:first-child{border-top:0;}
+    .feature-version{display:inline-flex;align-items:center;justify-content:center;min-width:44px;height:26px;border-radius:999px;background:rgba(113,183,255,.16);border:1px solid rgba(113,183,255,.32);color:#bfe0ff;font-size:12px;font-weight:900;}
+    .feature-title{font-weight:900;line-height:1.35;}
+    .feature-update-item p{margin:3px 0 0;color:var(--muted);font-size:12px;line-height:1.55;}
+    .compact-card{padding:14px 16px!important;margin-bottom:0!important;}
+    .compact-card .section-title{font-size:16px;margin-bottom:6px;}
+    .realtime-card #realtimeLog{max-height:105px;overflow:auto;display:block;padding-right:4px;}
+    @media(max-width:760px){
+      .feature-update-card{padding:15px!important;}
+      .feature-update-item{padding:8px 0;gap:8px;}
+      .feature-update-item:nth-child(n+4){display:none;}
+      .compact-card{padding:12px 14px!important;}
+      .realtime-card #realtimeLog{max-height:78px;}
+    }
+
 
     .analysis-state-grid { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
     .study-home-card{display:flex;justify-content:space-between;align-items:center;gap:16px}.study-home-card .btn{flex:0 0 auto}.artist-library-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}.artist-library-card{border:1px solid var(--line);background:rgba(255,255,255,.045);border-radius:18px;padding:14px}.artist-library-head{width:100%;display:flex;justify-content:space-between;align-items:center;gap:10px;background:transparent;color:inherit;text-align:left;padding:0 0 10px;border-bottom:1px solid var(--line)}.artist-library-head h4{margin:0 0 4px;font-size:18px}.artist-library-songs{padding-top:10px}.artist-mini-song{width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:14px;color:var(--text);padding:10px 12px;margin-top:8px}.artist-mini-song span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.saved-lyric-card h4{font-size:18px;line-height:1.55;margin-bottom:8px}.saved-lyric-card .jp{color:#ffe9a8;margin:4px 0 8px}
@@ -495,7 +519,18 @@
           <div class="card"><h3 class="section-title">最近追加された曲</h3><p class="mini">最新3曲を表示します。曲名カードを押すと詳細ページを開けます。</p><div id="latestSongList"><p class="mini">読み込み中...</p></div></div>
           <div class="card"><h3 class="section-title">アーティスト別ライブラリ</h3><p class="mini" id="libraryStats">読み込み中...</p><div id="songList"></div></div>
         </div>
-        <div><div class="card"><h3 class="section-title">リアルタイム更新</h3><p class="mini" id="realtimeLog">変更待機中...</p></div><div class="card"><h3 class="section-title">接続状態</h3><p class="mini" id="connectionStatus">確認中...</p></div></div>
+        <div class="home-side-panel">
+          <div class="card feature-update-card">
+            <div class="feature-head">
+              <h3 class="section-title">機能追加のお知らせ</h3>
+              <span class="feature-badge">NEW</span>
+            </div>
+            <p class="mini">最近追加された便利機能です。新しい機能を入れたらここに表示します。</p>
+            <div id="featureUpdateList"><p class="mini">読み込み中...</p></div>
+          </div>
+          <div class="card realtime-card compact-card"><h3 class="section-title">リアルタイム更新</h3><p class="mini" id="realtimeLog">変更待機中...</p></div>
+          <div class="card compact-card"><h3 class="section-title">接続状態</h3><p class="mini" id="connectionStatus">確認中...</p></div>
+        </div>
       </div>
     </section>
 
@@ -667,6 +702,6 @@
   <button id="backToTopBtn" class="back-to-top-btn no-print" type="button" data-action="back-to-top" aria-label="ページ上部へ戻る">上へ</button>
   <div id="toast" class="toast"></div>
   <script src="config.js"></script>
-  <script src="app.js?v=60-youtube-music-link"></script>
+  <script src="app.js?v=61-home-feature-updates"></script>
 </body>
 </html>

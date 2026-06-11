@@ -19,8 +19,15 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v60-youtube-music-link";
+const APP_PATCH_VERSION = "v61-home-feature-updates";
 let noteFilter = { type: "all", query: "" };
+
+const FEATURE_UPDATES = [
+  { version: "v60", title: "YouTube Musicリンク追加", detail: "曲詳細からYouTube Music検索を開けるようになりました。" },
+  { version: "v59", title: "歌詞ページに上へ戻るボタン", detail: "長い歌詞を見たあと、右下のボタンで上部へ戻れます。" },
+  { version: "v54-v56", title: "A4印刷 / PDF保存レイアウト", detail: "曲別テストをA4向けに印刷・PDF保存しやすくしました。" },
+  { version: "v53", title: "曲別テスト作成", detail: "歌詞全文・虫食い・単語文法テストを曲ごとに作れます。" }
+];
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
 const COMMON_PASSWORD = "12345";
@@ -346,6 +353,7 @@ async function startApp() {
   renderSongs();
   renderVocab();
   renderLog();
+  renderFeatureUpdates();
 }
 
 async function fetchSongs() {
@@ -409,6 +417,7 @@ function showScreen(id) {
   document.querySelectorAll(".tabbar button").forEach(b => b.classList.toggle("active", b.dataset.screen === id));
   if (id === "songs") renderSongs();
   if (id === "vocab") renderVocab();
+  if (id === "home") renderFeatureUpdates();
   updateBackToTopButton();
 }
 
@@ -436,6 +445,20 @@ function renderSongs() {
   const listHtml = filtered.length ? filtered.map(songListItem).join("") : `<p class="mini">曲がありません。</p>`;
   qs("#songList").innerHTML = filtered.length ? artistGroupHtml(filtered) : `<p class="mini">曲がありません。</p>`;
   qs("#songList2").innerHTML = listHtml;
+}
+
+function renderFeatureUpdates() {
+  const box = qs("#featureUpdateList");
+  if (!box) return;
+  box.innerHTML = FEATURE_UPDATES.map(item => `
+    <div class="feature-update-item">
+      <span class="feature-version">${esc(item.version)}</span>
+      <div>
+        <div class="feature-title">${esc(item.title)}</div>
+        <p>${esc(item.detail)}</p>
+      </div>
+    </div>
+  `).join("");
 }
 
 function latestSongsHtml(items) {
