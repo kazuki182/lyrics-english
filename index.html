@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Lyrics English</title>
-  <!-- v58 artist profile web search ja/en / keep word grammar print logic -->
+  <!-- v59 back to top on detail page / keep word grammar print logic -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="manifest" href="manifest.json">
   <style>
@@ -424,6 +424,40 @@
     }
 
 
+
+
+    /* v59: detail page back-to-top button for long lyrics */
+    .back-to-top-btn{
+      position:fixed;
+      right:18px;
+      bottom:calc(92px + env(safe-area-inset-bottom));
+      z-index:55;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      min-width:88px;
+      min-height:44px;
+      padding:10px 14px;
+      border-radius:999px;
+      background:linear-gradient(135deg,#e6c374,#f4d98e);
+      color:#07111f;
+      font-weight:900;
+      box-shadow:0 14px 38px rgba(0,0,0,.38);
+      border:1px solid rgba(255,255,255,.25);
+    }
+    .back-to-top-btn.is-visible{display:inline-flex;}
+    @media(max-width:760px){
+      .back-to-top-btn{
+        right:12px;
+        bottom:calc(82px + env(safe-area-inset-bottom));
+        min-width:76px;
+        min-height:42px;
+        padding:9px 12px;
+        font-size:14px;
+      }
+    }
+    @media print{.back-to-top-btn{display:none!important}}
+
   </style>
 </head>
 <body>
@@ -629,8 +663,9 @@
   </div>
 
   <div id="wordTooltip" class="word-tooltip" role="tooltip"></div>
+  <button id="backToTopBtn" class="back-to-top-btn no-print" type="button" data-action="back-to-top" aria-label="ページ上部へ戻る">上へ</button>
   <div id="toast" class="toast"></div>
   <script src="config.js"></script>
-  <script src="app.js?v=58-artist-profile-web-search-ja-en"></script>
+  <script src="app.js?v=59-back-to-top-detail"></script>
 </body>
 </html>

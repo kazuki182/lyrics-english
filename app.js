@@ -19,7 +19,7 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v58-artist-profile-web-search-ja-en";
+const APP_PATCH_VERSION = "v59-back-to-top-detail";
 let noteFilter = { type: "all", query: "" };
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
@@ -234,6 +234,7 @@ function bindStaticEvents() {
   qs("#modalAddBtn").addEventListener("click", addSelectedWordToVocab);
   qs("#wordModal").addEventListener("click", e => { if (e.target.id === "wordModal") closeWordModal(); });
   document.addEventListener("click", handleDelegatedClick);
+  window.addEventListener("scroll", updateBackToTopButton, { passive: true });
   document.addEventListener("input", handleDelegatedInput);
   document.addEventListener("change", handleDelegatedInput);
   document.addEventListener("mouseover", handleWordHover);
@@ -267,6 +268,7 @@ function handleDelegatedClick(e) {
     if (name === "create-song-test") openSongTest(id);
     if (name === "toggle-test-answers") toggleTestAnswers();
     if (name === "print-test") window.print();
+    if (name === "back-to-top") scrollToPageTop();
     return;
   }
   const word = e.target.closest("[data-word]");
@@ -407,6 +409,21 @@ function showScreen(id) {
   document.querySelectorAll(".tabbar button").forEach(b => b.classList.toggle("active", b.dataset.screen === id));
   if (id === "songs") renderSongs();
   if (id === "vocab") renderVocab();
+  updateBackToTopButton();
+}
+
+function scrollToPageTop() {
+  const active = document.querySelector(".screen.active");
+  const targetTop = active ? Math.max(0, active.getBoundingClientRect().top + window.scrollY - 12) : 0;
+  window.scrollTo({ top: targetTop, behavior: "smooth" });
+}
+
+function updateBackToTopButton() {
+  const btn = document.getElementById("backToTopBtn");
+  if (!btn) return;
+  const isDetail = document.getElementById("detail")?.classList.contains("active");
+  const shouldShow = isDetail && window.scrollY > 520;
+  btn.classList.toggle("is-visible", Boolean(shouldShow));
 }
 
 function renderSongs() {
