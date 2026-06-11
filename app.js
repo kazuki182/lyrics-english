@@ -19,7 +19,7 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v59-back-to-top-detail";
+const APP_PATCH_VERSION = "v60-youtube-music-link";
 let noteFilter = { type: "all", query: "" };
 
 const ALLOWED_USERS = ["kazuki", "shun", "izumihara", "yoshino", "odaka", "shion", "guest"];
@@ -559,6 +559,7 @@ function openSong(id) {
             ${s.youtube_url ? `<a class="btn" href="${escAttr(s.youtube_url)}" target="_blank" rel="noopener">YouTube</a>` : `<button class="btn secondary" disabled>YouTube未登録</button>`}
             ${resolveAppleMusicUrl(s) ? `<a class="btn secondary" href="${escAttr(resolveAppleMusicUrl(s))}" target="_blank" rel="noopener">Apple Music</a>` : `<button class="btn secondary" disabled>Apple Music未登録</button>`}
             ${spotifyUrl ? `<a class="btn secondary" href="${escAttr(spotifyUrl)}" target="_blank" rel="noopener">Spotify</a>` : `<button class="btn secondary" disabled>Spotify未登録</button>`}
+            ${resolveYouTubeMusicUrl(s) ? `<a class="btn secondary" href="${escAttr(resolveYouTubeMusicUrl(s))}" target="_blank" rel="noopener">YouTube Music</a>` : `<button class="btn secondary" disabled>YouTube Music未登録</button>`}
           </div>
           <div class="speech-panel">
             <div class="speech-title">読み上げ</div>
@@ -1542,15 +1543,17 @@ async function autoFillMusicLinks() {
   qs("#artistName").value = artist;
   if (!title || !artist) { toast("曲名とアーティスト名を先に入力してください"); return; }
   const spotifyUrl = makeSpotifySearchUrl(title, artist);
+  const youtubeMusicUrl = makeYouTubeMusicSearchUrl(title, artist);
   qs("#spotifyUrl").value = spotifyUrl;
+  if (qs("#youtubeMusicUrl")) qs("#youtubeMusicUrl").value = youtubeMusicUrl;
   try {
     const apple = await fetchAppleMusicInfo(title, artist);
     if (apple?.url) qs("#appleUrl").value = apple.url;
     if (apple?.artwork) qs("#coverArtUrl").value = apple.artwork;
-    toast(apple?.url ? "Apple Music / Spotifyリンクを入力しました" : "Spotifyリンクを入力しました。Apple Musicは見つかりませんでした");
+    toast(apple?.url ? "Apple Music / Spotify / YouTube Musicリンクを入力しました" : "Spotify / YouTube Musicリンクを入力しました。Apple Musicは見つかりませんでした");
   } catch (e) {
     console.warn("Music link lookup failed", e);
-    toast("Spotifyリンクを入力しました。Apple Music取得は失敗しました");
+    toast("Spotify / YouTube Musicリンクを入力しました。Apple Music取得は失敗しました");
   }
   createLyricsLinksFromForm(false);
 }
@@ -1558,6 +1561,18 @@ async function autoFillMusicLinks() {
 function makeAppleMusicSearchUrl(title, artist) {
   const q = [normalizeMusicSearchText(title, "title"), normalizeMusicSearchText(artist, "artist")].filter(Boolean).join(" ").trim();
   return q ? `https://music.apple.com/search?term=${encodeURIComponent(q)}` : "";
+}
+
+function makeYouTubeMusicSearchUrl(title, artist) {
+  const q = [normalizeMusicSearchText(title, "title"), normalizeMusicSearchText(artist, "artist")].filter(Boolean).join(" ").trim();
+  return q ? `https://music.youtube.com/search?q=${encodeURIComponent(q)}` : "";
+}
+
+function resolveYouTubeMusicUrl(song) {
+  const saved = String(song?.youtube_music_url || "").trim();
+  const search = makeYouTubeMusicSearchUrl(song?.title || "", song?.artist_name || "");
+  if (/^https?:\/\/music\.youtube\.com\//i.test(saved)) return saved;
+  return search || saved;
 }
 
 function normalizeForMatch(value) {
@@ -2631,6 +2646,7 @@ async function saveSong() {
     youtube_url: qs("#youtubeUrl").value.trim(),
     apple_music_url: qs("#appleUrl").value.trim(),
     spotify_url: qs("#spotifyUrl").value.trim(),
+    youtube_music_url: qs("#youtubeMusicUrl")?.value?.trim() || makeYouTubeMusicSearchUrl(title, artistName),
     cover_art_url: qs("#coverArtUrl").value.trim(),
     genre: (learningInfo.genre || qs("#genre").value || "").trim(),
     difficulty: learningInfo.difficulty || qs("#difficulty").value,
@@ -2653,6 +2669,7 @@ async function saveSong() {
     youtube_url: draftBackup.youtube_url,
     apple_music_url: draftBackup.apple_music_url,
     spotify_url: draftBackup.spotify_url,
+    youtube_music_url: draftBackup.youtube_music_url,
     cover_art_url: draftBackup.cover_art_url,
     lyrics_links: makeLyricsSearchLinks(title, artistName),
     genre: draftBackup.genre,
@@ -2727,6 +2744,7 @@ async function updateSongExactly(id, originalPayload) {
   const removedColumns = [];
   const optionalOrder = [
     "spotify_url",
+    "youtube_music_url",
     "cover_art_url",
     "lyrics_links",
     "youtube_thumbnail_url",
@@ -2767,6 +2785,7 @@ async function upsertSongSafely(originalPayload) {
   const removedColumns = [];
   const optionalOrder = [
     "spotify_url",
+    "youtube_music_url",
     "cover_art_url",
     "lyrics_links",
     "youtube_thumbnail_url",
@@ -2970,7 +2989,7 @@ async function deleteSong(id) {
 }
 
 function clearForm() {
-  ["editId", "youtubeUrl", "songTitle", "artistName", "appleUrl", "spotifyUrl", "coverArtUrl", "genre", "artistProfile", "lyricsRaw", "chatgptPrompt", "manualAnalysis"].forEach(id => { const el = qs("#" + id); if (el) el.value = ""; });
+  ["editId", "youtubeUrl", "songTitle", "artistName", "appleUrl", "spotifyUrl", "youtubeMusicUrl", "coverArtUrl", "genre", "artistProfile", "lyricsRaw", "chatgptPrompt", "manualAnalysis"].forEach(id => { const el = qs("#" + id); if (el) el.value = ""; });
   qs("#difficulty").value = "初級";
   qs("#formTitle").textContent = "曲を追加";
   qs("#lyricsLinksPreview").style.display = "none";
