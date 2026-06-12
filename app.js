@@ -19,10 +19,11 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v61-home-feature-updates";
+const APP_PATCH_VERSION = "v62-unregistered-word-add";
 let noteFilter = { type: "all", query: "" };
 
 const FEATURE_UPDATES = [
+  { version: "v62", title: "未登録単語を単語帳に追加", detail: "意味が出なかった単語もChatGPT用プロンプトで登録しやすくしました。" },
   { version: "v60", title: "YouTube Musicリンク追加", detail: "曲詳細からYouTube Music検索を開けるようになりました。" },
   { version: "v59", title: "歌詞ページに上へ戻るボタン", detail: "長い歌詞を見たあと、右下のボタンで上部へ戻れます。" },
   { version: "v54-v56", title: "A4印刷 / PDF保存レイアウト", detail: "曲別テストをA4向けに印刷・PDF保存しやすくしました。" },
@@ -239,6 +240,8 @@ function bindStaticEvents() {
   qs("#printBtn").addEventListener("click", () => window.print());
   qs("#modalCloseBtn").addEventListener("click", closeWordModal);
   qs("#modalAddBtn").addEventListener("click", addSelectedWordToVocab);
+  const modalPromptBtn = qs("#modalPromptBtn");
+  if (modalPromptBtn) modalPromptBtn.addEventListener("click", generateWordRegistrationPrompt);
   qs("#wordModal").addEventListener("click", e => { if (e.target.id === "wordModal") closeWordModal(); });
   document.addEventListener("click", handleDelegatedClick);
   window.addEventListener("scroll", updateBackToTopButton, { passive: true });
@@ -1009,10 +1012,12 @@ function wordify(text, songId, lineNo, songTitle, artistName, wordItems = []) {
       const clean = normalizeWord(part);
       const item = lookupWordItemForToken(wordMap, clean) || {};
       const hasAnalysisWord = Boolean(item.meaning);
-      if (!hasAnalysisWord && !isLearningVocabularyWord(clean)) {
+      const clickableUnknown = !hasAnalysisWord && clean.length >= 3 && !STOP_WORDS.has(clean);
+      if (!hasAnalysisWord && !isLearningVocabularyWord(clean) && !clickableUnknown) {
         return `<span class="word plain-word">${esc(part)}</span>`;
       }
-      return `<span class="word" tabindex="0" data-word="${escAttr(item.word || clean)}" data-token="${escAttr(clean)}" data-song-id="${escAttr(songId)}" data-line-no="${lineNo}" data-song-title="${escAttr(songTitle || "")}" data-artist-name="${escAttr(artistName || "")}" data-meaning="${escAttr(item.meaning || "")}" data-usage="${escAttr(item.usage || "")}" data-example="${escAttr(item.example || "")}" data-example-ja="${escAttr(item.example_ja || item.ja || "")}">${esc(part)}</span>`;
+      const cls = hasAnalysisWord || isLearningVocabularyWord(clean) ? "word" : "word unregistered-word";
+      return `<span class="${cls}" tabindex="0" data-word="${escAttr(item.word || clean)}" data-token="${escAttr(clean)}" data-song-id="${escAttr(songId)}" data-line-no="${lineNo}" data-song-title="${escAttr(songTitle || "")}" data-artist-name="${escAttr(artistName || "")}" data-unregistered="${hasAnalysisWord ? "0" : "1"}" data-meaning="${escAttr(item.meaning || "")}" data-usage="${escAttr(item.usage || "")}" data-example="${escAttr(item.example || "")}" data-example-ja="${escAttr(item.example_ja || item.ja || "")}">${esc(part)}</span>`;
     }
     return esc(part);
   }).join("");
@@ -3040,15 +3045,16 @@ function showWordTooltip(el, word) {
   if (!tip) return;
   const info = getWordInfo(word);
   const usage = getWordUsage(word);
-  const meaning = el?.dataset?.meaning || info.meaning;
-  const usageText = el?.dataset?.usage || usage.usage;
-  const example = el?.dataset?.example || usage.example;
-  const exampleJa = el?.dataset?.exampleJa || usage.ja;
+  const isUnregistered = el?.dataset?.unregistered === "1" && !el?.dataset?.meaning;
+  const meaning = el?.dataset?.meaning || (isUnregistered ? "未登録です。クリックすると単語帳に追加できます。" : info.meaning);
+  const usageText = el?.dataset?.usage || (isUnregistered ? "ChatGPT用プロンプトを作って、意味・使い方・例文を登録できます。" : usage.usage);
+  const example = el?.dataset?.example || (isUnregistered ? "" : usage.example);
+  const exampleJa = el?.dataset?.exampleJa || (isUnregistered ? "" : usage.ja);
   tip.innerHTML = `
-    <div class="tip-title">${esc(word)}</div>
+    <div class="tip-title">${esc(word)}${isUnregistered ? " <span class='mini'>未登録</span>" : ""}</div>
     <div class="tip-section"><b>意味：</b><br>${esc(meaning || "意味を確認してください")}</div>
     <div class="tip-section"><b>使い方：</b><br>${esc(usageText || "文脈の中で使い方を確認します。")}</div>
-    <div class="tip-section"><b>例文：</b><br>${esc(example || `Check the word "${normalizeWord(word)}" in context.`)}<br>${esc(exampleJa || `「${normalizeWord(word)}」を文脈の中で確認しましょう。`)}</div>
+    ${isUnregistered ? "" : `<div class="tip-section"><b>例文：</b><br>${esc(example || `Check the word "${normalizeWord(word)}" in context.`)}<br>${esc(exampleJa || `「${normalizeWord(word)}」を文脈の中で確認しましょう。`)}</div>`}
   `;
   tip.style.display = "block";
   const rect = el.getBoundingClientRect();
@@ -3083,24 +3089,32 @@ function openWordModal(word, songId, lineNo, songTitle, artistName, detail = {})
   if (songId === "preview") { toast("保存後に単語を追加できます"); return; }
   const clean = normalizeWord(word);
   const manualMeaning = String(detail?.meaning || "").trim();
-  if (STOP_WORDS.has(clean) || (!manualMeaning && !isLearningVocabularyWord(clean))) { toast("歌詞理解に役立つ重要単語だけを単語帳に追加できます"); return; }
+  if (STOP_WORDS.has(clean) || clean.length < 2) { toast("基本語以外の単語を登録できます"); return; }
   const info = getWordInfo(clean);
   const song = songs.find(s => s.id === songId);
   const line = (song?.lyric_lines || []).find(l => Number(l.line_no) === Number(lineNo));
-  selectedWordContext = { word: clean, songId, lineNo, songTitle, artistName, example: line?.lyric || "" };
+  selectedWordContext = { word: clean, songId, lineNo, songTitle, artistName, example: line?.lyric || "", translation: line?.translation || line?.grammar?.translation || "" };
+  const isUnregistered = detail?.unregistered === "1" && !manualMeaning;
   qs("#modalWord").textContent = clean;
-  qs("#modalInfo").textContent = `${songTitle} / ${artistName}`;
-  qs("#modalMeaning").value = manualMeaning || info.meaning;
-  qs("#modalPos").value = info.pos;
+  qs("#modalInfo").textContent = `${songTitle} / ${artistName}${isUnregistered ? " / 未登録単語" : ""}`;
+  qs("#modalMeaning").value = manualMeaning || (isUnregistered ? "" : info.meaning);
+  qs("#modalPos").value = isUnregistered ? "" : info.pos;
   const usage = getWordUsage(clean);
-  const usageText = detail?.usage || usage.usage || info.memo || "";
-  const exampleText = detail?.example || usage.example || "";
-  const exampleJa = detail?.exampleJa || detail?.example_ja || usage.ja || "";
-  qs("#modalMemo").value = `${info.memo}
+  const usageText = detail?.usage || (isUnregistered ? "" : usage.usage || info.memo || "");
+  const exampleText = detail?.example || (isUnregistered ? line?.lyric || "" : usage.example || "");
+  const exampleJa = detail?.exampleJa || detail?.example_ja || (isUnregistered ? line?.translation || line?.grammar?.translation || "" : usage.ja || "");
+  qs("#modalMemo").value = isUnregistered
+    ? `曲中の文脈: ${line?.lyric || ""}${exampleJa ? `
+和訳: ${exampleJa}` : ""}
+
+ChatGPT用プロンプトで意味・使い方・例文を作ってから貼り付けてください。`
+    : `${info.memo}
 使い方: ${usageText}
 例文: ${exampleText}
 訳: ${exampleJa}` + (line?.lyric ? `
 歌詞: ${line.lyric}` : "");
+  const promptBox = qs("#modalPromptOutput");
+  if (promptBox) promptBox.value = "";
   qs("#modalDictLink").href = dictionaryUrl(clean);
   qs("#wordModal").style.display = "flex";
 }
@@ -3114,6 +3128,61 @@ function getWordInfo(word) {
   const key = normalizeWord(word).replace(/'/g, "");
   const value = WORD_DICTIONARY[key] || WORD_DICTIONARY[normalizeWord(word)] || ["意味を確認してください", "品詞を確認してください", "歌詞理解に役立つ重要単語として、文脈の中で意味を確認してください。"];
   return { meaning: value[0], pos: value[1], memo: value[2] };
+}
+
+function generateWordRegistrationPrompt() {
+  if (!selectedWordContext) return;
+  const { word, songTitle, artistName, example, translation } = selectedWordContext;
+  const prompt = `以下の英単語について、日本人の英語学習者向けに、Lyrics Englishの単語帳へ登録できる形式で説明してください。
+
+単語：${word}
+曲名：${songTitle || ""}
+アーティスト：${artistName || ""}
+歌詞中の文脈：${example || ""}
+自然な和訳：${translation || ""}
+
+条件：
+・歌詞の文脈に合う意味を優先してください。
+・意味は短く自然な日本語で書いてください。
+・日常会話で使える使い方も入れてください。
+・例文は簡単な英語にしてください。
+・出力は必ず以下の形式にしてください。
+
+【単語登録データ】
+word: ${word}
+meaning:
+part_of_speech:
+level:
+usage:
+example:
+example_ja:
+memo:`;
+  const box = qs("#modalPromptOutput");
+  if (box) box.value = prompt;
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(prompt).then(() => toast("ChatGPT用プロンプトをコピーしました"), () => toast("プロンプトを作成しました"));
+  } else {
+    toast("プロンプトを作成しました");
+  }
+}
+
+function parseVocabMemoDetails(memo = "") {
+  const text = String(memo || "");
+  const get = labels => {
+    for (const label of labels) {
+      const re = new RegExp(`(?:^|\n)${escapeRegExp(label)}\s*[：:]\s*([^\n]+)`, "i");
+      const m = re.exec(text);
+      if (m) return m[1].trim();
+    }
+    return "";
+  };
+  return {
+    level: get(["level", "レベル", "難易度"]),
+    usage: get(["usage", "使い方", "用法"]),
+    example: get(["example", "例文"]),
+    exampleJa: get(["example_ja", "例文訳", "訳", "日本語訳"]),
+    context: get(["曲中の文脈", "歌詞", "context"])
+  };
 }
 
 async function addSelectedWordToVocab() {
@@ -3230,17 +3299,30 @@ function renderVocab() {
       </div>
     </div>`;
 
-  const vocabHtml = showWords ? (filteredWords.length ? `<h3 class="section-title">保存単語</h3>` + filteredWords.map(x => `
+  const vocabHtml = showWords ? (filteredWords.length ? `<h3 class="section-title">保存単語</h3>` + filteredWords.map(x => {
+    const d = parseVocabMemoDetails(x.memo || "");
+    const exampleText = x.example || d.example || "";
+    return `
     <div class="song-item note-card note-word-card">
-      <div>
+      <div class="note-main">
         <h4>${esc(x.word)}</h4>
-        <div>${esc(x.meaning)}</div>
+        <div class="note-meaning">${esc(x.meaning)}</div>
+        <div class="word-detail-grid">
+          ${x.part_of_speech ? `<span>品詞：${esc(x.part_of_speech)}</span>` : ""}
+          ${d.level ? `<span>レベル：${esc(d.level)}</span>` : ""}
+          ${x.song_title ? `<span>曲：${esc(x.song_title)}</span>` : ""}
+          ${x.artist_name ? `<span>アーティスト：${esc(x.artist_name)}</span>` : ""}
+        </div>
+        ${d.usage ? `<div class="mini"><b>使い方：</b>${esc(d.usage)}</div>` : ""}
+        ${exampleText ? `<div class="mini"><b>例文：</b>${esc(exampleText)}</div>` : ""}
+        ${d.exampleJa ? `<div class="mini"><b>例文訳：</b>${esc(d.exampleJa)}</div>` : ""}
+        ${d.context ? `<div class="mini"><b>曲中の文脈：</b>${esc(d.context)}</div>` : ""}
+        ${x.memo && !d.usage && !d.level ? `<details class="word-detail-more"><summary>メモを見る</summary><div class="mini">${esc(x.memo)}</div></details>` : ""}
         <a class="dict-link" href="${escAttr(dictionaryUrl(x.word))}" target="_blank" rel="noopener">Weblioで確認</a>
-        <div class="mini">${esc(x.part_of_speech || "")} / ${esc(x.song_title || "")} / ${esc(x.artist_name || "")} / ${fmt(x.created_at)}</div>
-        <div class="mini">${esc(x.example || x.memo || "")}</div>
+        <div class="mini">${fmt(x.created_at)}</div>
       </div>
       <button class="btn red no-print" data-action="delete-vocab" data-id="${escAttr(x.id)}">削除</button>
-    </div>`).join("") : `<h3 class="section-title">保存単語</h3><p class="mini">条件に合う単語はありません。</p>`) : "";
+    </div>`}).join("") : `<h3 class="section-title">保存単語</h3><p class="mini">条件に合う単語はありません。</p>`) : "";
 
   const lyricHtml = showLyrics ? (filteredLyrics.length ? `<h3 class="section-title" style="margin-top:28px">保存フレーズ</h3>` + filteredLyrics.map(x => `
     <div class="song-item saved-lyric-card note-card">
