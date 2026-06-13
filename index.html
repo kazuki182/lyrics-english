@@ -101,6 +101,26 @@
 
     .analysis-state-grid { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
     .study-home-card{display:flex;justify-content:space-between;align-items:center;gap:16px}.study-home-card .btn{flex:0 0 auto}.artist-library-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}.artist-library-card{border:1px solid var(--line);background:rgba(255,255,255,.045);border-radius:18px;padding:14px}.artist-library-head{width:100%;display:flex;justify-content:space-between;align-items:center;gap:10px;background:transparent;color:inherit;text-align:left;padding:0 0 10px;border-bottom:1px solid var(--line)}.artist-library-head h4{margin:0 0 4px;font-size:18px}.artist-library-songs{padding-top:10px}.artist-mini-song{width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:14px;color:var(--text);padding:10px 12px;margin-top:8px}.artist-mini-song span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.saved-lyric-card h4{font-size:18px;line-height:1.55;margin-bottom:8px}.saved-lyric-card .jp{color:#ffe9a8;margin:4px 0 8px}
+
+    /* v63: HOME artist alphabet/search */
+    .artist-home-search-card{padding:14px 16px;margin-bottom:12px;}
+    .artist-search-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;}
+    .artist-search-row input{width:100%;}
+    .artist-suggestions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;min-height:26px;}
+    .artist-suggestion{border:1px solid rgba(113,183,255,.34);background:rgba(113,183,255,.12);color:#d8edff;border-radius:999px;padding:7px 10px;font-size:13px;font-weight:800;}
+    .artist-library-title-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;}
+    .artist-library-title-row .section-title{margin-bottom:4px;}
+    .artist-alphabet{display:flex;gap:5px;overflow-x:auto;max-width:100%;padding:2px 0 6px;scrollbar-width:thin;}
+    .artist-letter{min-width:32px;height:32px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--text);font-size:12px;font-weight:900;}
+    .artist-letter.active{background:linear-gradient(135deg,#e6c374,#ffe7a4);color:#07111f;border-color:#e6c374;}
+    .artist-letter:disabled{opacity:.28;}
+    @media(max-width:760px){
+      .artist-search-row{grid-template-columns:1fr;}
+      .artist-home-search-card{padding:12px 14px;}
+      .artist-suggestion{font-size:12px;padding:6px 9px;}
+      .artist-letter{min-width:30px;height:30px;font-size:11px;}
+    }
+
     .danger-tag { background:#5b2330; color:#ffd5df; border-color:#8b3a4a; }
     .warn-text { color:#ffd28a; margin-top:10px; }
 
@@ -514,10 +534,29 @@
         </div>
         <span class="study-home-open">見る</span>
       </button>
+      <div class="card artist-home-search-card">
+        <div class="artist-search-row">
+          <div>
+            <h3 class="section-title">アーティスト検索</h3>
+            <p class="mini">頭文字や名前を入力すると候補が出ます。</p>
+          </div>
+          <input id="artistSearch" type="search" placeholder="例: A / Arch / Thirty" autocomplete="off">
+        </div>
+        <div id="artistSuggestions" class="artist-suggestions"><span class="mini">頭文字やアーティスト名を入力すると候補が出ます。</span></div>
+      </div>
       <div class="grid">
         <div>
           <div class="card"><h3 class="section-title">最近追加された曲</h3><p class="mini">最新3曲を表示します。曲名カードを押すと詳細ページを開けます。</p><div id="latestSongList"><p class="mini">読み込み中...</p></div></div>
-          <div class="card"><h3 class="section-title">アーティスト別ライブラリ</h3><p class="mini" id="libraryStats">読み込み中...</p><div id="songList"></div></div>
+          <div class="card">
+            <div class="artist-library-title-row">
+              <div>
+                <h3 class="section-title">アーティスト別ライブラリ</h3>
+                <p class="mini" id="libraryStats">読み込み中...</p>
+              </div>
+              <div id="artistAlphabet" class="artist-alphabet" aria-label="アーティスト頭文字フィルター"></div>
+            </div>
+            <div id="songList"></div>
+          </div>
         </div>
         <div class="home-side-panel">
           <div class="card feature-update-card">
@@ -705,6 +744,6 @@
   <button id="backToTopBtn" class="back-to-top-btn no-print" type="button" data-action="back-to-top" aria-label="ページ上部へ戻る">上へ</button>
   <div id="toast" class="toast"></div>
   <script src="config.js"></script>
-  <script src="app.js?v=62-unregistered-word-add"></script>
+  <script src="app.js?v=63-home-artist-alpha-search"></script>
 </body>
 </html>

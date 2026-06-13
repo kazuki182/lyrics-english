@@ -19,10 +19,12 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v62-unregistered-word-add";
+const APP_PATCH_VERSION = "v63-home-artist-alpha-search";
 let noteFilter = { type: "all", query: "" };
+let artistLibraryFilter = { letter: "all", query: "" };
 
 const FEATURE_UPDATES = [
+  { version: "v63", title: "アーティスト検索・頭文字ジャンプ", detail: "HOMEでアーティストを検索し、A-Zの頭文字から探せるようにしました。" },
   { version: "v62", title: "未登録単語を単語帳に追加", detail: "意味が出なかった単語もChatGPT用プロンプトで登録しやすくしました。" },
   { version: "v60", title: "YouTube Musicリンク追加", detail: "曲詳細からYouTube Music検索を開けるようになりました。" },
   { version: "v59", title: "歌詞ページに上へ戻るボタン", detail: "長い歌詞を見たあと、右下のボタンで上部へ戻れます。" },
@@ -236,6 +238,7 @@ function bindStaticEvents() {
   qs("#saveBtn").addEventListener("click", saveSong);
   qs("#clearBtn").addEventListener("click", clearForm);
   qs("#search").addEventListener("input", renderSongs);
+  qs("#artistSearch")?.addEventListener("input", e => { artistLibraryFilter.query = e.target.value || ""; artistLibraryFilter.letter = "all"; renderSongs(); });
   qs("#printViewBtn").addEventListener("click", showPrintVocab);
   qs("#printBtn").addEventListener("click", () => window.print());
   qs("#modalCloseBtn").addEventListener("click", closeWordModal);
@@ -279,6 +282,8 @@ function handleDelegatedClick(e) {
     if (name === "toggle-test-answers") toggleTestAnswers();
     if (name === "print-test") window.print();
     if (name === "back-to-top") scrollToPageTop();
+    if (name === "artist-letter") { artistLibraryFilter.letter = action.dataset.letter || "all"; artistLibraryFilter.query = ""; const input = qs("#artistSearch"); if (input) input.value = ""; renderSongs(); }
+    if (name === "artist-suggest") { artistLibraryFilter.query = action.dataset.artist || ""; artistLibraryFilter.letter = "all"; const input = qs("#artistSearch"); if (input) input.value = artistLibraryFilter.query; renderSongs(); }
     return;
   }
   const word = e.target.closest("[data-word]");
@@ -297,6 +302,11 @@ function handleDelegatedInput(e) {
   if (el.id === "noteTypeFilter") {
     noteFilter.type = String(el.value || "all");
     renderVocab();
+  }
+  if (el.id === "artistSearch") {
+    artistLibraryFilter.query = String(el.value || "");
+    artistLibraryFilter.letter = "all";
+    renderSongs();
   }
 }
 
@@ -441,13 +451,71 @@ function updateBackToTopButton() {
 function renderSongs() {
   const q = (qs("#search")?.value || "").toLowerCase();
   const filtered = songs.filter(s => `${s.title || ""} ${s.artist_name || ""} ${s.genre || ""}`.toLowerCase().includes(q));
+  const artistFiltered = filterSongsForArtistLibrary(songs);
   const stats = qs("#libraryStats");
-  if (stats) stats.textContent = `登録曲: ${songs.length}曲 / 参加ユーザー: ${ALLOWED_USERS.map(userDisplayName).join("・")}`;
+  if (stats) {
+    const artistCount = uniqueArtistNames(songs).length;
+    const active = artistLibraryFilter.query ? ` / 検索: ${artistLibraryFilter.query}` : artistLibraryFilter.letter !== "all" ? ` / ${artistLibraryFilter.letter} から始まるアーティスト` : "";
+    stats.textContent = `登録曲: ${songs.length}曲 / アーティスト: ${artistCount}組${active}`;
+  }
   const latestBox = qs("#latestSongList");
   if (latestBox) latestBox.innerHTML = latestSongsHtml(songs);
   const listHtml = filtered.length ? filtered.map(songListItem).join("") : `<p class="mini">曲がありません。</p>`;
-  qs("#songList").innerHTML = filtered.length ? artistGroupHtml(filtered) : `<p class="mini">曲がありません。</p>`;
-  qs("#songList2").innerHTML = listHtml;
+  const songList = qs("#songList");
+  if (songList) songList.innerHTML = artistFiltered.length ? artistGroupHtml(artistFiltered) : `<p class="mini">該当するアーティストがありません。</p>`;
+  const songList2 = qs("#songList2");
+  if (songList2) songList2.innerHTML = listHtml;
+  renderArtistSearchHelpers();
+}
+
+function normalizeArtistInitial(name) {
+  const t = String(name || "").trim();
+  if (!t) return "#";
+  const ch = t.replace(/^the\s+/i, "").charAt(0).toUpperCase();
+  return /^[A-Z]$/.test(ch) ? ch : "#";
+}
+
+function uniqueArtistNames(items) {
+  return [...new Set((items || []).map(s => (s.artist_name || "アーティスト未設定").trim() || "アーティスト未設定"))]
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function filterSongsForArtistLibrary(items) {
+  const query = String(artistLibraryFilter.query || "").trim().toLowerCase();
+  const letter = artistLibraryFilter.letter || "all";
+  return (items || []).filter(song => {
+    const artist = (song.artist_name || "アーティスト未設定").trim() || "アーティスト未設定";
+    const artistLower = artist.toLowerCase();
+    const queryOk = !query || artistLower.includes(query) || artistLower.startsWith(query);
+    const letterOk = letter === "all" || normalizeArtistInitial(artist) === letter;
+    return queryOk && letterOk;
+  });
+}
+
+function renderArtistSearchHelpers() {
+  const alphabetBox = qs("#artistAlphabet");
+  const suggestions = qs("#artistSuggestions");
+  if (!alphabetBox && !suggestions) return;
+
+  const names = uniqueArtistNames(songs);
+  const available = new Set(names.map(normalizeArtistInitial));
+  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+  if (alphabetBox) {
+    alphabetBox.innerHTML = [`<button class="artist-letter ${artistLibraryFilter.letter === "all" ? "active" : ""}" type="button" data-action="artist-letter" data-letter="all">ALL</button>`,
+      ...letters.map(letter => `<button class="artist-letter ${artistLibraryFilter.letter === letter ? "active" : ""}" type="button" data-action="artist-letter" data-letter="${letter}" ${available.has(letter) ? "" : "disabled"}>${letter}</button>`),
+      `<button class="artist-letter ${artistLibraryFilter.letter === "#" ? "active" : ""}" type="button" data-action="artist-letter" data-letter="#" ${available.has("#") ? "" : "disabled"}>#</button>`
+    ].join("");
+  }
+
+  if (suggestions) {
+    const query = String(artistLibraryFilter.query || "").trim().toLowerCase();
+    if (!query) {
+      suggestions.innerHTML = `<span class="mini">頭文字やアーティスト名を入力すると候補が出ます。</span>`;
+      return;
+    }
+    const matched = names.filter(name => name.toLowerCase().startsWith(query) || name.toLowerCase().includes(query)).slice(0, 8);
+    suggestions.innerHTML = matched.length ? matched.map(name => `<button class="artist-suggestion" type="button" data-action="artist-suggest" data-artist="${escAttr(name)}">${esc(name)}</button>`).join("") : `<span class="mini">候補がありません。</span>`;
+  }
 }
 
 function renderFeatureUpdates() {
