@@ -19,7 +19,7 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v67-mobile-artist-library-scroll-fix";
+const APP_PATCH_VERSION = "v68-artist-search-clear-reset";
 let noteFilter = { type: "all", query: "" };
 let artistLibraryFilter = { letter: "all", query: "" };
 
@@ -240,7 +240,12 @@ function bindStaticEvents() {
   qs("#saveBtn").addEventListener("click", saveSong);
   qs("#clearBtn").addEventListener("click", clearForm);
   qs("#search").addEventListener("input", renderSongs);
-  qs("#artistSearch")?.addEventListener("input", e => { artistLibraryFilter.query = e.target.value || ""; artistLibraryFilter.letter = "all"; renderSongs(); });
+  const artistSearchInput = qs("#artistSearch");
+  if (artistSearchInput) {
+    ["input", "search", "keyup", "change"].forEach(evt => {
+      artistSearchInput.addEventListener(evt, handleArtistSearchInput);
+    });
+  }
   qs("#printViewBtn").addEventListener("click", showPrintVocab);
   qs("#printBtn").addEventListener("click", () => window.print());
   qs("#modalCloseBtn").addEventListener("click", closeWordModal);
@@ -306,10 +311,22 @@ function handleDelegatedInput(e) {
     renderVocab();
   }
   if (el.id === "artistSearch") {
-    artistLibraryFilter.query = String(el.value || "");
-    artistLibraryFilter.letter = "all";
-    renderSongs();
+    handleArtistSearchInput({ target: el });
   }
+}
+
+function handleArtistSearchInput(e) {
+  const raw = String(e?.target?.value || "");
+  const query = raw.trim();
+  if (!query) {
+    artistLibraryFilter = { letter: "all", query: "" };
+    const input = qs("#artistSearch");
+    if (input && input.value) input.value = "";
+  } else {
+    artistLibraryFilter.query = query;
+    artistLibraryFilter.letter = "all";
+  }
+  renderSongs();
 }
 
 function qs(selector) { return document.querySelector(selector); }
