@@ -19,11 +19,12 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v64-home-artist-library-priority";
+const APP_PATCH_VERSION = "v65-mobile-artist-library-fit";
 let noteFilter = { type: "all", query: "" };
 let artistLibraryFilter = { letter: "all", query: "" };
 
 const FEATURE_UPDATES = [
+  { version: "v65", title: "スマホ版アーティスト別ライブラリを調整", detail: "iPhoneで横に見切れないように、検索・A-Z・アーティストカードを1列表示に整えました。" },
   { version: "v64", title: "アーティスト別ライブラリを上に移動", detail: "HOMEでアーティスト検索・A-Zフィルターを使いやすくし、最近追加された曲より上に表示しました。" },
   { version: "v63", title: "アーティスト検索・頭文字ジャンプ", detail: "HOMEでアーティストを検索し、A-Zの頭文字から探せるようにしました。" },
   { version: "v62", title: "未登録単語を単語帳に追加", detail: "意味が出なかった単語もChatGPT用プロンプトで登録しやすくしました。" },
