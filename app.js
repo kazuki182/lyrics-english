@@ -19,11 +19,12 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v69-home-cover-carousel";
+const APP_PATCH_VERSION = "v70-youtube-title-manual-priority";
 let noteFilter = { type: "all", query: "" };
 let artistLibraryFilter = { letter: "all", query: "" };
 
 const FEATURE_UPDATES = [
+  { version: "v70", title: "手入力タイトル優先・曲名推定改善", detail: "YouTube推定が不完全でも手入力を上書きせず、曲名・アーティスト候補を探しやすくしました。" },
   { version: "v69", title: "HOMEにジャケット横スクロール", detail: "追加済み曲のアルバムジャケットを横スワイプで見られるようにしました。" },
   { version: "v65", title: "スマホ版アーティスト別ライブラリを調整", detail: "iPhoneで横に見切れないように、検索・A-Z・アーティストカードを1列表示に整えました。" },
   { version: "v64", title: "アーティスト別ライブラリを上に移動", detail: "HOMEでアーティスト検索・A-Zフィルターを使いやすくし、最近追加された曲より上に表示しました。" },
@@ -204,6 +205,12 @@ const WORD_USAGE = {
 };
 
 const KNOWN_YOUTUBE = {
+  _P3Q6VkNrwg: {
+    title: "Left Behind",
+    artist: "The Plot In You",
+    genre: "Post-hardcore / Alternative metal / Metalcore / Alternative rock",
+    profile: "The Plot In Youは、アメリカのロックバンドです。激しいサウンドと感情的な歌詞が特徴で、英語学習では感情表現、句動詞、比喩表現を学びやすいアーティストです。"
+  },
   JGwWNGJdvx8: {
     title: "Shape of You",
     artist: "Ed Sheeran",
@@ -1208,13 +1215,26 @@ async function autoFillFromYoutube() {
     channelText = embed.author;
     youtubeThumbFromEmbed = embed.thumbnail || "";
   }
-  const guess = known ? { ...known } : (titleText ? parseYoutubeTitle(titleText, channelText) : { title: "Unknown Song", artist: "Artist Name", genre: "Pop", profile: "" });
+  let guess = known ? { ...known } : (titleText ? parseYoutubeTitle(titleText, channelText) : { title: "", artist: cleanMainArtistName(channelText || ""), genre: "Pop", profile: "" });
+
+  // YouTubeタイトル抽出が「Le」など不完全な場合は、Apple / MusicBrainzの公開検索で候補を補助します。
+  if (!known && (isBadAutoTitle(guess.title) || !guess.artist || /^artist name$/i.test(guess.artist))) {
+    const searchText = [titleText, channelText].filter(Boolean).join(" ");
+    const candidate = await searchMusicMetadataCandidate(searchText);
+    if (candidate?.title && !isBadAutoTitle(candidate.title)) {
+      guess = { ...guess, ...candidate, genre: guess.genre || "Pop" };
+      toast(`${candidate.source || "音楽検索"}から曲情報候補を取得しました`);
+    }
+  }
+
   applySongGuess(guess);
   if (youtubeThumbFromEmbed && !qs("#coverArtUrl").value) qs("#coverArtUrl").value = youtubeThumbFromEmbed;
+  if (guess.cover_art_url && !qs("#coverArtUrl").value) qs("#coverArtUrl").value = guess.cover_art_url;
+  if (guess.apple_music_url && !qs("#appleUrl").value) qs("#appleUrl").value = guess.apple_music_url;
   createLyricsLinksFromForm(false);
   const artistInfo = await fetchArtistInfo(guess.artist);
-  qs("#artistProfile").value = getJapaneseArtistProfile(guess.artist, artistInfo?.extract || guess.profile || "");
-  toast("曲名・アーティスト名を自動入力しました");
+  if (guess.artist && qs("#artistProfile")) qs("#artistProfile").value = getJapaneseArtistProfile(guess.artist, artistInfo?.extract || guess.profile || "");
+  toast(isBadAutoTitle(guess.title) ? "曲名を自動判定できませんでした。手入力してください" : "曲名・アーティスト名を自動入力しました");
 }
 
 async function fetchYoutubeOEmbed(url) {
@@ -1289,6 +1309,78 @@ function cleanMainSongTitle(value) {
     .trim();
 }
 
+
+function isBadAutoTitle(value) {
+  const t = cleanMainSongTitle(value || "").trim();
+  if (!t) return true;
+  const compact = t.replace(/[^A-Za-z0-9ぁ-んァ-ン一-龥]/g, "");
+  if (compact.length <= 2) return true;
+  if (/^(le|the|official|audio|lyrics?|video|mv|unknown song)$/i.test(t)) return true;
+  return false;
+}
+
+function normalizeAutoCandidateTitle(value) {
+  return cleanMainSongTitle(value || "")
+    .replace(/^['"“”‘’]+|['"“”‘’]+$/g, "")
+    .trim();
+}
+
+function keepBetterManualValue(currentValue, guessedValue, kind = "title") {
+  const current = kind === "artist" ? cleanMainArtistName(currentValue || "") : cleanMainSongTitle(currentValue || "");
+  const guessed = kind === "artist" ? cleanMainArtistName(guessedValue || "") : normalizeAutoCandidateTitle(guessedValue || "");
+  if (current && (kind === "artist" || !isBadAutoTitle(current))) return current;
+  if (kind === "title" && isBadAutoTitle(guessed)) return current || "";
+  return guessed || current || "";
+}
+
+async function searchMusicMetadataCandidate(searchText) {
+  const term = String(searchText || "").replace(/\s+/g, " ").trim();
+  if (!term || term.length < 4) return null;
+
+  // Apple/iTunes Search APIはCORSで使いやすく、曲名・アーティスト名・ジャケット候補を返せます。
+  try {
+    const params = new URLSearchParams({ term, media: "music", entity: "song", country: "US", limit: "8" });
+    const res = await fetch(`https://itunes.apple.com/search?${params.toString()}`);
+    if (res.ok) {
+      const json = await res.json();
+      const results = (json.results || []).filter(x => x.trackName && x.artistName);
+      const best = results.find(x => normalizeForMatch(term).includes(normalizeForMatch(x.trackName)) || normalizeForMatch(x.trackName).includes(normalizeForMatch(term))) || results[0];
+      if (best) {
+        return {
+          title: cleanMainSongTitle(best.trackName || ""),
+          artist: cleanMainArtistName(best.artistName || ""),
+          apple_music_url: best.trackViewUrl || "",
+          cover_art_url: highResAppleArtwork(best.artworkUrl100 || ""),
+          source: "Apple Music Search"
+        };
+      }
+    }
+  } catch (e) {
+    console.warn("Apple music candidate search failed", e);
+  }
+
+  // 予備としてMusicBrainz検索。Appleで出ない曲の候補補助に使います。
+  try {
+    const params = new URLSearchParams({ query: term, fmt: "json", limit: "5" });
+    const res = await fetch(`https://musicbrainz.org/ws/2/recording/?${params.toString()}`);
+    if (res.ok) {
+      const json = await res.json();
+      const rec = (json.recordings || []).find(x => x.title && x["artist-credit"]?.[0]?.name) || null;
+      if (rec) {
+        return {
+          title: cleanMainSongTitle(rec.title || ""),
+          artist: cleanMainArtistName(rec["artist-credit"]?.map(a => a.name).filter(Boolean).join(" ") || ""),
+          source: "MusicBrainz"
+        };
+      }
+    }
+  } catch (e) {
+    console.warn("MusicBrainz candidate search failed", e);
+  }
+
+  return null;
+}
+
 function parseYoutubeTitle(title, channel) {
   let clean = String(title || "")
     .replace(/\[[^\]]*]/g, " ")
@@ -1322,12 +1414,15 @@ function parseYoutubeTitle(title, channel) {
 }
 
 function applySongGuess(g) {
-  const title = cleanMainSongTitle(g.title || "");
-  const artist = cleanMainArtistName(g.artist || "");
-  qs("#songTitle").value = title;
-  qs("#artistName").value = artist;
-  qs("#genre").value = g.genre || "Pop";
-  qs("#artistProfile").value = getJapaneseArtistProfile(artist || "このアーティスト", g.profile || "");
+  const currentTitle = qs("#songTitle")?.value || "";
+  const currentArtist = qs("#artistName")?.value || "";
+  const title = keepBetterManualValue(currentTitle, g.title || "", "title");
+  const artist = keepBetterManualValue(currentArtist, g.artist || "", "artist");
+
+  if (title) qs("#songTitle").value = title;
+  if (artist) qs("#artistName").value = artist;
+  if (qs("#genre") && g.genre) qs("#genre").value = g.genre || "Pop";
+  if (qs("#artistProfile") && artist) qs("#artistProfile").value = getJapaneseArtistProfile(artist || "このアーティスト", g.profile || "");
   if (g.featured_artist) toast(`参加アーティスト「${g.featured_artist}」は検索精度のためアーティスト欄から外しました`);
 }
 
@@ -2743,20 +2838,26 @@ async function saveSong() {
   const editId = qs("#editId").value || "";
   const raw = normalizeLyricsText(qs("#lyricsRaw").value.trim());
   qs("#lyricsRaw").value = raw;
-  const title = cleanMainSongTitle(qs("#songTitle").value.trim());
-  const artistName = cleanMainArtistName(qs("#artistName").value.trim());
+  let title = cleanMainSongTitle(qs("#songTitle").value.trim());
+  let artistName = cleanMainArtistName(qs("#artistName").value.trim());
+
+  // v70: 保存時は手入力を最優先。YouTube推定で短すぎる曲名が入っていても、既存の正しい曲名を壊さない。
+  const editingSong = editId ? (songs || []).find(s => String(s.id) === String(editId)) : null;
+  if (isBadAutoTitle(title) && editingSong?.title && !isBadAutoTitle(editingSong.title)) {
+    title = cleanMainSongTitle(editingSong.title);
+    toast("曲名が短すぎるため、既存の曲名を保持しました");
+  }
+
   qs("#songTitle").value = title;
   qs("#artistName").value = artistName;
 
-  if (!title || !raw) {
-    toast("曲名と歌詞は必須です");
+  if (!title || isBadAutoTitle(title) || !raw) {
+    toast("曲名と歌詞は必須です。曲名が短すぎる場合は手入力してください");
     return;
   }
 
   const duplicate = findDuplicateSongByTitleArtist(title, artistName, editId);
-  const existing = editId
-    ? (songs || []).find(s => String(s.id) === String(editId))
-    : duplicate;
+  const existing = editingSong || duplicate;
   const id = existing?.id || editId || crypto.randomUUID();
 
   if (!editId && duplicate) {
