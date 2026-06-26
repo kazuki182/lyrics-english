@@ -620,6 +620,26 @@
       #home .artist-letter{width:36px!important;min-width:36px!important;height:34px!important;flex-basis:34px!important;font-size:11px!important;}
     }
 
+
+    /* v69: HOME album jacket horizontal carousel */
+    .home-cover-section{overflow:hidden;}
+    .home-cover-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px;}
+    .home-cover-rail{display:flex;gap:12px;overflow-x:auto;overflow-y:hidden;padding:2px 2px 8px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;}
+    .home-cover-rail::-webkit-scrollbar{height:8px;}
+    .home-cover-rail::-webkit-scrollbar-thumb{background:rgba(230,195,116,.48);border-radius:999px;}
+    .home-cover-card{flex:0 0 132px;width:132px;text-align:left;background:rgba(255,255,255,.045);border:1px solid var(--line);border-radius:18px;color:var(--text);padding:10px;scroll-snap-align:start;}
+    .home-cover-card img{display:block;width:100%;aspect-ratio:1;border-radius:14px;object-fit:cover;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.10);margin-bottom:8px;}
+    .home-cover-title{display:block;font-weight:900;font-size:13px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .home-cover-artist{display:block;color:var(--muted);font-size:12px;line-height:1.35;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    @media(max-width:760px){
+      .home-cover-section{padding:14px 12px!important;border-radius:22px!important;}
+      .home-cover-rail{gap:10px;margin-left:-2px;margin-right:-2px;padding-bottom:10px;}
+      .home-cover-card{flex-basis:118px;width:118px;border-radius:16px;padding:9px;}
+      .home-cover-card img{border-radius:13px;margin-bottom:7px;}
+      .home-cover-title{font-size:12px;}
+      .home-cover-artist{font-size:11px;}
+    }
+
   </style>
 </head>
 <body>
@@ -652,6 +672,15 @@
         </div>
         <span class="study-home-open">見る</span>
       </button>
+      <div class="card home-cover-section">
+        <div class="home-cover-head">
+          <div>
+            <h3 class="section-title">最近追加されたジャケット</h3>
+            <p class="mini">登録済みのアルバムジャケットを横にスワイプできます。タップすると曲ページを開きます。</p>
+          </div>
+        </div>
+        <div id="homeCoverCarousel"><p class="mini">読み込み中...</p></div>
+      </div>
       <div class="card artist-home-search-card">
         <div class="artist-search-row">
           <div>
@@ -865,6 +894,6 @@
   <button id="backToTopBtn" class="back-to-top-btn no-print" type="button" data-action="back-to-top" aria-label="ページ上部へ戻る">上へ</button>
   <div id="toast" class="toast"></div>
   <script src="config.js"></script>
-  <script src="app.js?v=68-artist-search-clear-reset"></script>
+  <script src="app.js?v=69-home-cover-carousel"></script>
 </body>
 </html>

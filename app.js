@@ -19,11 +19,12 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v68-artist-search-clear-reset";
+const APP_PATCH_VERSION = "v69-home-cover-carousel";
 let noteFilter = { type: "all", query: "" };
 let artistLibraryFilter = { letter: "all", query: "" };
 
 const FEATURE_UPDATES = [
+  { version: "v69", title: "HOMEにジャケット横スクロール", detail: "追加済み曲のアルバムジャケットを横スワイプで見られるようにしました。" },
   { version: "v65", title: "スマホ版アーティスト別ライブラリを調整", detail: "iPhoneで横に見切れないように、検索・A-Z・アーティストカードを1列表示に整えました。" },
   { version: "v64", title: "アーティスト別ライブラリを上に移動", detail: "HOMEでアーティスト検索・A-Zフィルターを使いやすくし、最近追加された曲より上に表示しました。" },
   { version: "v63", title: "アーティスト検索・頭文字ジャンプ", detail: "HOMEでアーティストを検索し、A-Zの頭文字から探せるようにしました。" },
@@ -478,6 +479,8 @@ function renderSongs() {
     stats.textContent = `登録曲: ${songs.length}曲 / アーティスト: ${artistCount}組${active}`;
   }
   const latestBox = qs("#latestSongList");
+  const coverBox = qs("#homeCoverCarousel");
+  if (coverBox) coverBox.innerHTML = homeCoverCarouselHtml(songs);
   if (latestBox) latestBox.innerHTML = latestSongsHtml(songs);
   const listHtml = filtered.length ? filtered.map(songListItem).join("") : `<p class="mini">曲がありません。</p>`;
   const songList = qs("#songList");
@@ -549,6 +552,36 @@ function renderFeatureUpdates() {
       </div>
     </div>
   `).join("");
+}
+
+
+function getSongCoverUrl(song) {
+  const direct = String(song?.cover_art_url || song?.album_art_url || song?.jacket_url || song?.artwork_url || "").trim();
+  if (direct) return direct;
+  const youtubeThumb = getYoutubeThumbnail(song?.youtube_url || "");
+  return youtubeThumb || "";
+}
+
+function homeCoverCarouselHtml(items) {
+  const picked = [...(items || [])]
+    .filter(s => getSongCoverUrl(s))
+    .sort((a, b) => new Date(b.created_at || b.updated_at || 0) - new Date(a.created_at || a.updated_at || 0))
+    .slice(0, 14);
+
+  if (!picked.length) {
+    return `<p class="mini">ジャケット画像が登録された曲がまだありません。</p>`;
+  }
+
+  return `
+    <div class="home-cover-rail" aria-label="最近追加されたジャケット">
+      ${picked.map(s => `
+        <button class="home-cover-card" type="button" data-action="open-song" data-id="${escAttr(s.id)}">
+          <img src="${escAttr(getSongCoverUrl(s))}" alt="${escAttr((s.title || '曲') + ' のジャケット')}" loading="lazy" onerror="this.src='${escAttr(placeholderImage())}'">
+          <span class="home-cover-title">${esc(s.title || "Untitled")}</span>
+          <span class="home-cover-artist">${esc(s.artist_name || "アーティスト未設定")}</span>
+        </button>
+      `).join("")}
+    </div>`;
 }
 
 function latestSongsHtml(items) {
