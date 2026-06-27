@@ -656,6 +656,31 @@ export function clearTestSession(key: string) {
   return progress.testSessions ?? {};
 }
 
+export function getLatestTestSession() {
+  const progress = getCurrentProgress();
+  if (!progress?.testSessions) return null;
+  const sessions = Object.values(progress.testSessions)
+    .filter((session) => session.index < session.itemIds.length)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  return sessions[0] ?? null;
+}
+
+export function getTestSessionHref(session: TestSession) {
+  if (session.key.startsWith("review:")) return "/review";
+  if (session.section === "basic") return `/tests/${session.verbId}/basic`;
+  if (session.section === "idioms") return `/tests/${session.verbId}/idioms`;
+  if (session.section === "phrasal") return `/tests/${session.verbId}/phrasal`;
+  return `/tests/${session.verbId}`;
+}
+
+export function getTestSectionLabel(section: string) {
+  if (section === "basic") return "基本動詞テスト";
+  if (section === "idioms") return "熟語テスト";
+  if (section === "phrasal") return "句動詞テスト";
+  if (section === "all") return "総合テスト";
+  return "テスト";
+}
+
 
 export function getUnlockedVerbCount() {
   const progress = getCurrentProgress();

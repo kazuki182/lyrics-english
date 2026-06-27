@@ -10,6 +10,7 @@ type SectionKey = "basic" | "idioms" | "phrasal";
 type Props = {
   verb: Verb;
   compact?: boolean;
+  bookmarkOverride?: StudyBookmark | null;
 };
 
 function isSectionClear(progress: UserProgress | null, verbId: string, section: SectionKey) {
@@ -48,14 +49,14 @@ export function getTotalVerbProgress(verb: Verb, progress: UserProgress | null, 
   return Math.round((basic + idioms + phrasal) / 3);
 }
 
-export default function VerbProgressPanel({ verb, compact = false }: Props) {
+export default function VerbProgressPanel({ verb, compact = false, bookmarkOverride }: Props) {
   const [progress, setProgress] = useState<UserProgress | null>(null);
   const [bookmark, setBookmark] = useState<StudyBookmark | null>(null);
 
   useEffect(() => {
     setProgress(getCurrentProgress());
-    setBookmark(getCurrentBookmark());
-  }, []);
+    setBookmark(bookmarkOverride === undefined ? getCurrentBookmark() : bookmarkOverride);
+  }, [bookmarkOverride]);
 
   const values = useMemo(() => {
     const basic = getSectionProgress(verb, "basic", progress, bookmark);

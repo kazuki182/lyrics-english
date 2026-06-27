@@ -13,6 +13,9 @@ import {
   setStudyDaysSetting,
   getCurrentBookmark,
   getBookmarkSectionLabel,
+  getLatestTestSession,
+  getTestSectionLabel,
+  getTestSessionHref,
   getTargetDate,
   initAdminAccount,
   logout,
@@ -33,6 +36,7 @@ export default function Home() {
   const [reviewCount, setReviewCount] = useState(0);
   const [saveMessage, setSaveMessage] = useState("");
   const [bookmark, setBookmark] = useState<ReturnType<typeof getCurrentBookmark>>(null);
+  const [testSession, setTestSession] = useState<ReturnType<typeof getLatestTestSession>>(null);
   const [studyMode, setStudyMode] = useState<"everyday" | "weekdays" | "custom">("everyday");
   const [customDays, setCustomDays] = useState<number[]>([1, 2, 3, 4, 5]);
 
@@ -48,6 +52,7 @@ export default function Home() {
     setTarget(getTargetDate());
     setReviewCount(getDueReviewItems().length);
     setBookmark(getCurrentBookmark());
+    setTestSession(getLatestTestSession());
     const savedStudyDays = getStudyDaysSetting();
     setStudyMode(savedStudyDays.mode);
     setCustomDays(savedStudyDays.days);
@@ -57,9 +62,21 @@ export default function Home() {
 
   const completed = progress.studiedVerbIds.length;
   const plan = getLearningPlan(verbs.length, completed);
+  const testVerb = testSession ? getVerb(testSession.verbId) : null;
   const bookmarkVerb = bookmark ? getVerb(bookmark.verbId) : null;
-  const activeVerb = bookmarkVerb || verbs.find((verb) => !progress.studiedVerbIds.includes(verb.id)) || verbs[0];
-  const activeProgress = getTotalVerbProgress(activeVerb, progress, bookmark);
+  const activeVerb = testVerb || bookmarkVerb || verbs.find((verb) => !progress.studiedVerbIds.includes(verb.id)) || verbs[0];
+  const activeBookmark = testSession
+    ? {
+        verbId: testSession.verbId,
+        section: "test" as const,
+        label: `${activeVerb.word} ${getTestSectionLabel(testSession.section)}`,
+        href: getTestSessionHref(testSession),
+        itemTitle: `${Math.min(testSession.index + 1, testSession.itemIds.length)} / ${testSession.itemIds.length}問目`,
+        itemIndex: testSession.index + 1,
+        savedAt: testSession.updatedAt
+      }
+    : bookmark;
+  const activeProgress = getTotalVerbProgress(activeVerb, progress, activeBookmark);
   const targetParts = splitTarget(plan.targetDate);
   const updateTarget = (value: string) => {
     setTarget(value);
@@ -231,23 +248,23 @@ export default function Home() {
           </div>
           <Link
             className="shrink-0 rounded-full bg-cyan-300 px-4 py-2 text-sm font-bold text-slate-950"
-            href={bookmark?.href ?? `/verbs/${activeVerb.id}`}
+            href={activeBookmark?.href ?? `/verbs/${activeVerb.id}`}
           >
-            {bookmark ? "続きから" : "開く"}
+            {testSession ? "テスト再開" : activeBookmark ? "続きから" : "開く"}
           </Link>
         </div>
 
         <div className="mt-4">
-          <VerbProgressPanel verb={activeVerb} compact />
+          <VerbProgressPanel verb={activeVerb} compact bookmarkOverride={activeBookmark} />
         </div>
 
         <div className="mt-4 rounded-2xl border border-cyan-300/20 bg-slate-950/60 p-3">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs font-bold tracking-[0.16em] text-cyan-200">前回の続き</p>
-              {bookmark ? (
+              {activeBookmark ? (
                 <p className="mt-1 truncate text-sm text-slate-300">
-                  {getBookmarkSectionLabel(bookmark.section)}{bookmark.itemTitle ? ` / ${bookmark.itemTitle}` : ""}
+                  {testSession ? getTestSectionLabel(testSession.section) : getBookmarkSectionLabel(activeBookmark.section)}{activeBookmark.itemTitle ? ` / ${activeBookmark.itemTitle}` : ""}
                 </p>
               ) : (
                 <p className="mt-1 text-sm text-slate-300">まだしおりはありません。</p>

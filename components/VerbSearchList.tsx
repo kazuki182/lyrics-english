@@ -29,16 +29,16 @@ export default function VerbSearchList({ verbs }: { verbs: Verb[] }) {
 
   return (
     <div className="space-y-4">
-      <div className="card p-4">
-        <label className="text-sm font-bold text-muted" htmlFor="verb-search">
-          登録動詞を検索
+      <div className="rounded-3xl border border-cyan-300/30 bg-slate-950/70 p-4 shadow-lg">
+        <label className="flex items-center gap-2 text-sm font-bold text-cyan-100" htmlFor="verb-search">
+          <span>🔍</span><span>登録動詞を検索</span>
         </label>
         <input
           id="verb-search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="例：get / 承認 / 会議 / 始める"
-          className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-base text-white outline-none focus:border-cyan-300/60"
+          className="mt-3 block w-full rounded-2xl border border-cyan-300/30 bg-slate-900 px-4 py-4 text-base text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/80"
         />
         <p className="mt-2 text-xs text-muted">
           {filtered.length} / {verbs.length} 動詞を表示中
