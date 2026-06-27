@@ -640,6 +640,18 @@
       .home-cover-artist{font-size:11px;}
     }
 
+  
+    /* v73 detail cleanup + same artist songs */
+    .other-artist-songs-card .section-title{margin-bottom:6px}
+    .other-song-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:12px}
+    .other-song-card{width:100%;display:flex;align-items:center;gap:10px;text-align:left;background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:16px;color:var(--text);padding:10px;min-width:0}
+    .other-song-card:hover{background:rgba(230,195,116,.12)}
+    .other-song-cover{width:52px;height:52px;border-radius:12px;object-fit:cover;background:rgba(255,255,255,.08);flex:0 0 auto;border:1px solid var(--line)}
+    .placeholder-mini{display:grid;place-items:center;font-weight:900;color:#ffe9a8}
+    .other-song-info{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+    .other-song-info b,.other-song-info span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    @media(max-width:760px){.other-song-list{grid-template-columns:1fr}.other-song-card{padding:11px}.other-song-cover{width:48px;height:48px}.other-artist-songs-card{margin-top:10px}}
+
   </style>
 </head>
 <body>

@@ -19,11 +19,12 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v72-word-meaning-required";
+const APP_PATCH_VERSION = "v73-detail-clean-other-songs";
 let noteFilter = { type: "all", query: "" };
 let artistLibraryFilter = { letter: "all", query: "" };
 
 const FEATURE_UPDATES = [
+  { version: "v73", title: "歌詞解説ページを整理", detail: "解析データ状態と案内ボタンを非表示にし、同じアーティストの他の曲を見やすく表示しました。" },
   { version: "v72", title: "意味なし単語の保存防止", detail: "単語帳登録時に意味が空のまま保存されないようにし、ChatGPT結果の貼り付けで意味・品詞を自動反映しやすくしました。" },
   { version: "v71", title: "単語帳登録を一語優先に修正", detail: "未登録単語の登録時に歌詞行ではなく選択した一語を保存し、意味・品詞・使い方・例文を表示しやすくしました。" },
   { version: "v70", title: "手入力タイトル優先・曲名推定改善", detail: "YouTube推定が不完全でも手入力を上書きせず、曲名・アーティスト候補を探しやすくしました。" },
@@ -692,7 +693,7 @@ function openSong(id) {
   const songWordData = getSongWordData(s);
   const linesBeforeManualBlockFix = enrichLinesWithSongWordData(baseLines, songWordData);
   const lines = applyManualAnalysisGrammarBlocks(linesBeforeManualBlockFix, s.manual_analysis || "");
-  const analysisState = getAnalysisStateHtml(s, lines, displaySource);
+  const otherSongsHtml = getOtherSongsByArtistHtml(s);
   const youtubeThumb = getYoutubeThumbnail(s.youtube_url);
   const spotifyUrl = resolveSpotifyUrl(s);
   const lyricLinks = normalizeLyricsLinks(s.lyrics_links || makeLyricsSearchLinks(s.title, s.artist_name));
@@ -749,7 +750,7 @@ function openSong(id) {
       <h3 class="section-title">アーティスト情報</h3>
       <div id="artistInfo" class="mini">アーティスト情報を取得中...</div>
     </div>
-    ${analysisState}
+    ${otherSongsHtml}
     <div class="card no-print">
       <h3 class="section-title">曲別テスト</h3>
       <p class="mini">この曲の歌詞・単語・文法から、個人学習用のリスニングテストを作れます。PDF保存はまだ行わず、まず画面上で内容を確認します。</p>
@@ -762,6 +763,37 @@ function openSong(id) {
   showScreen("detail");
 
   enrichSongDetail(s, youtubeThumb, savedCover);
+}
+
+
+function getOtherSongsByArtistHtml(song) {
+  const artist = String(song?.artist_name || "").trim();
+  if (!artist) return "";
+  const currentId = String(song?.id || "");
+  const normalizeArtist = value => String(value || "").trim().toLowerCase();
+  const sameArtistSongs = songs
+    .filter(item => String(item?.id || "") !== currentId && normalizeArtist(item?.artist_name) === normalizeArtist(artist))
+    .sort((a, b) => new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0));
+
+  if (!sameArtistSongs.length) return "";
+
+  return `
+    <div class="card no-print other-artist-songs-card">
+      <h3 class="section-title">${esc(artist)} の他の曲</h3>
+      <p class="mini">今開いているアーティストの登録曲を表示しています。</p>
+      <div class="other-song-list">
+        ${sameArtistSongs.slice(0, 8).map(item => `
+          <button class="other-song-card" type="button" data-action="open-song" data-id="${escAttr(item.id)}">
+            ${(item.cover_art_url || getYoutubeThumbnail(item.youtube_url)) ? `<img class="other-song-cover" src="${escAttr(item.cover_art_url || getYoutubeThumbnail(item.youtube_url))}" alt="${escAttr(item.title || "曲")}">` : `<span class="other-song-cover placeholder-mini">LE</span>`}
+            <span class="other-song-info">
+              <b>${esc(item.title || "Untitled")}</b>
+              <span>${esc(item.genre || "ジャンル未設定")}</span>
+            </span>
+            ${item.difficulty ? `<span class="tag">${esc(item.difficulty)}</span>` : ""}
+          </button>
+        `).join("")}
+      </div>
+    </div>`;
 }
 
 function getSongDisplayLines(song) {
@@ -1132,7 +1164,6 @@ function lineHtml(line, songId, songTitle, artistName) {
       <button class="btn red" data-action="speech-stop" type="button">停止</button>
       <button class="btn secondary" data-action="speech-rate" data-rate="0.5" data-text="${escAttr(lyric)}" type="button">0.5倍</button>
       <button class="btn secondary" data-action="speech-rate" data-rate="0.35" data-text="${escAttr(lyric)}" type="button">0.35倍</button>
-      <button class="btn green" type="button">単語は上の英単語を直接タップ</button>
       <button class="btn secondary" type="button" data-action="save-lyric-line" data-song-id="${escAttr(songId)}" data-song-title="${escAttr(songTitle || "")}" data-artist-name="${escAttr(artistName || "")}" data-line-no="${Number(line.line_no) || 0}" data-lyric="${escAttr(lyric)}" data-translation="${escAttr(translation)}">この歌詞行を保存（フレーズ）</button>
     </div>
   </div>`;
