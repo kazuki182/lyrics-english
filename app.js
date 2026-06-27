@@ -19,7 +19,7 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v73-detail-clean-other-songs";
+const APP_PATCH_VERSION = "v74-title-save-known-youtube-fix";
 let noteFilter = { type: "all", query: "" };
 let artistLibraryFilter = { letter: "all", query: "" };
 
@@ -2878,18 +2878,31 @@ async function saveSong() {
   let title = cleanMainSongTitle(qs("#songTitle").value.trim());
   let artistName = cleanMainArtistName(qs("#artistName").value.trim());
 
-  // v70: 保存時は手入力を最優先。YouTube推定で短すぎる曲名が入っていても、既存の正しい曲名を壊さない。
+  // v74: 保存時は画面の手入力を最優先。短すぎる推定タイトルは保存に使わない。
   const editingSong = editId ? (songs || []).find(s => String(s.id) === String(editId)) : null;
-  if (isBadAutoTitle(title) && editingSong?.title && !isBadAutoTitle(editingSong.title)) {
-    title = cleanMainSongTitle(editingSong.title);
-    toast("曲名が短すぎるため、既存の曲名を保持しました");
+  const youtubeIdForSave = extractYoutubeId(qs("#youtubeUrl")?.value || "");
+  const knownYoutubeForSave = youtubeIdForSave ? KNOWN_YOUTUBE[youtubeIdForSave] : null;
+
+  if (isBadAutoTitle(title)) {
+    if (knownYoutubeForSave?.title && !isBadAutoTitle(knownYoutubeForSave.title)) {
+      title = cleanMainSongTitle(knownYoutubeForSave.title);
+      if (!artistName && knownYoutubeForSave.artist) artistName = cleanMainArtistName(knownYoutubeForSave.artist);
+      toast("YouTube URLから既知の曲名を補完しました");
+    } else if (editingSong?.title && !isBadAutoTitle(editingSong.title)) {
+      title = cleanMainSongTitle(editingSong.title);
+      toast("曲名が短すぎるため、既存の曲名を保持しました");
+    }
   }
 
   qs("#songTitle").value = title;
   qs("#artistName").value = artistName;
 
-  if (!title || isBadAutoTitle(title) || !raw) {
-    toast("曲名と歌詞は必須です。曲名が短すぎる場合は手入力してください");
+  if (!title || isBadAutoTitle(title)) {
+    toast(`曲名が短すぎます。現在の曲名:「${title || "空欄"}」。曲名を手入力してください。`);
+    return;
+  }
+  if (!raw) {
+    toast("歌詞本文は必須です。歌詞を入力してください");
     return;
   }
 
