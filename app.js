@@ -19,7 +19,7 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v76-feat-clean-left-behind-fix";
+const APP_PATCH_VERSION = "v77-song-page-search-boxes";
 let noteFilter = { type: "all", query: "" };
 let artistLibraryFilter = { letter: "all", query: "" };
 
@@ -251,6 +251,8 @@ function bindStaticEvents() {
   qs("#saveBtn").addEventListener("click", saveSong);
   qs("#clearBtn").addEventListener("click", clearForm);
   qs("#search").addEventListener("input", renderSongs);
+  qs("#songArtistSearch")?.addEventListener("input", renderSongs);
+  qs("#clearSongSearchBtn")?.addEventListener("click", () => { const t = qs("#search"); const a = qs("#songArtistSearch"); if (t) t.value = ""; if (a) a.value = ""; renderSongs(); });
   const artistSearchInput = qs("#artistSearch");
   if (artistSearchInput) {
     ["input", "search", "keyup", "change"].forEach(evt => {
@@ -483,8 +485,16 @@ function updateBackToTopButton() {
 }
 
 function renderSongs() {
-  const q = (qs("#search")?.value || "").toLowerCase();
-  const filtered = songs.filter(s => `${s.title || ""} ${s.artist_name || ""} ${s.genre || ""}`.toLowerCase().includes(q));
+  const q = (qs("#search")?.value || "").trim().toLowerCase();
+  const artistQ = (qs("#songArtistSearch")?.value || "").trim().toLowerCase();
+  const filtered = songs.filter(s => {
+    const titleText = `${s.title || ""} ${s.genre || ""} ${s.difficulty || ""}`.toLowerCase();
+    const artistText = `${s.artist_name || ""}`.toLowerCase();
+    const allText = `${s.title || ""} ${s.artist_name || ""} ${s.genre || ""} ${s.difficulty || ""}`.toLowerCase();
+    const titleOk = !q || titleText.includes(q) || allText.includes(q);
+    const artistOk = !artistQ || artistText.includes(artistQ);
+    return titleOk && artistOk;
+  });
   const artistFiltered = filterSongsForArtistLibrary(songs);
   const stats = qs("#libraryStats");
   if (stats) {
@@ -501,7 +511,31 @@ function renderSongs() {
   if (songList) songList.innerHTML = artistFiltered.length ? artistGroupHtml(artistFiltered) : `<p class="mini">該当するアーティストがありません。</p>`;
   const songList2 = qs("#songList2");
   if (songList2) songList2.innerHTML = listHtml;
+  updateSongSearchSummary(filtered.length);
+  renderSongArtistDatalist();
   renderArtistSearchHelpers();
+}
+
+
+function updateSongSearchSummary(count) {
+  const el = qs("#songSearchSummary");
+  if (!el) return;
+  const q = (qs("#search")?.value || "").trim();
+  const a = (qs("#songArtistSearch")?.value || "").trim();
+  if (!q && !a) {
+    el.textContent = `全${songs.length}曲を表示中`;
+    return;
+  }
+  const parts = [];
+  if (q) parts.push(`曲名/キーワード: ${q}`);
+  if (a) parts.push(`アーティスト: ${a}`);
+  el.textContent = `${parts.join(" / ")} / ${count}曲`;
+}
+
+function renderSongArtistDatalist() {
+  const list = qs("#songArtistOptions");
+  if (!list) return;
+  list.innerHTML = uniqueArtistNames(songs).map(name => `<option value="${escAttr(name)}"></option>`).join("");
 }
 
 function normalizeArtistInitial(name) {

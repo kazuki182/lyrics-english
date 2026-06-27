@@ -72,6 +72,20 @@
     .line-extra[open] summary::after{content:"－";}
     .line-extra .compact-analysis{margin-top:10px;}
 
+
+    /* v77: Songs page search boxes */
+    .song-search-card{position:sticky;top:8px;z-index:8;}
+    .song-search-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px;}
+    .song-search-card .field{margin-bottom:0;}
+    .song-search-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;}
+    .small-btn{min-height:38px;padding:9px 12px;border-radius:12px;font-size:13px;}
+    @media(max-width:760px){
+      .song-search-card{position:relative;top:auto;padding:15px 13px!important;}
+      .song-search-grid{grid-template-columns:1fr;gap:10px;}
+      .song-search-actions{align-items:stretch;flex-direction:column;}
+      .small-btn{width:100%;min-height:46px;font-size:14px;}
+    }
+
     @media print{.top,.tabbar,.no-print,.screen:not(.active),.modal{display:none!important}body{background:white;color:#111}.app{padding:0}.card{box-shadow:none;border:0;background:white;color:#111}@page{size:A4;margin:14mm}}
   .plain-word{opacity:.72;cursor:default}
 
@@ -735,7 +749,28 @@
       </div>
     </section>
 
-    <section id="songs" class="screen"><div class="card"><h3 class="section-title">曲一覧</h3><input id="search" placeholder="曲名・アーティストで検索"></div><div id="songList2"></div></section>
+    <section id="songs" class="screen">
+      <div class="card song-search-card">
+        <h3 class="section-title">曲一覧</h3>
+        <p class="mini">曲名・アーティスト名で絞り込めます。登録曲が増えてきた時の管理用です。</p>
+        <div class="song-search-grid">
+          <div class="field">
+            <label>曲名・キーワード検索</label>
+            <input id="search" type="search" placeholder="例: Left / love / numb" autocomplete="off">
+          </div>
+          <div class="field">
+            <label>アーティスト検索</label>
+            <input id="songArtistSearch" type="search" placeholder="例: The Plot In You / Avril" list="songArtistOptions" autocomplete="off">
+            <datalist id="songArtistOptions"></datalist>
+          </div>
+        </div>
+        <div class="song-search-actions">
+          <span id="songSearchSummary" class="mini">全曲を表示中</span>
+          <button id="clearSongSearchBtn" type="button" class="btn secondary small-btn">検索をクリア</button>
+        </div>
+      </div>
+      <div id="songList2"></div>
+    </section>
 
     <section id="study" class="screen">
       <div class="hero">
@@ -906,6 +941,6 @@
   <button id="backToTopBtn" class="back-to-top-btn no-print" type="button" data-action="back-to-top" aria-label="ページ上部へ戻る">上へ</button>
   <div id="toast" class="toast"></div>
   <script src="config.js"></script>
-  <script src="app.js?v=76-feat-clean-left-behind-fix"></script>
+  <script src="app.js?v=77-song-page-search-boxes"></script>
 </body>
 </html>
