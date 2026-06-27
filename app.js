@@ -19,7 +19,7 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v74-title-save-known-youtube-fix";
+const APP_PATCH_VERSION = "v75-music-link-title-lock";
 let noteFilter = { type: "all", query: "" };
 let artistLibraryFilter = { letter: "all", query: "" };
 
@@ -1817,11 +1817,31 @@ function placeholderImage() {
 }
 
 async function autoFillMusicLinks() {
-  const title = cleanMainSongTitle(qs("#songTitle").value.trim());
-  const artist = cleanMainArtistName(qs("#artistName").value.trim());
-  qs("#songTitle").value = title;
-  qs("#artistName").value = artist;
-  if (!title || !artist) { toast("曲名とアーティスト名を先に入力してください"); return; }
+  // v75: 音楽リンク自動取得はリンクだけを作る。曲名・アーティスト名は勝手に短縮/推定上書きしない。
+  const titleEl = qs("#songTitle");
+  const artistEl = qs("#artistName");
+  let title = cleanMainSongTitle(titleEl?.value?.trim() || "");
+  let artist = cleanMainArtistName(artistEl?.value?.trim() || "");
+
+  // 既知のYouTube URLがある場合だけ、短すぎるタイトルを安全に補完する。
+  const youtubeId = extractYoutubeId(qs("#youtubeUrl")?.value || "");
+  const known = youtubeId ? KNOWN_YOUTUBE[youtubeId] : null;
+  if (isBadAutoTitle(title) && known?.title && !isBadAutoTitle(known.title)) {
+    title = cleanMainSongTitle(known.title);
+    toast("YouTube URLから曲名を補完しました");
+  }
+  if (!artist && known?.artist) {
+    artist = cleanMainArtistName(known.artist);
+  }
+
+  if (!title || isBadAutoTitle(title) || !artist) {
+    toast("曲名とアーティスト名を確認してください。音楽リンク取得では曲名を自動上書きしません。", 4800);
+    return;
+  }
+
+  if (titleEl) titleEl.value = title;
+  if (artistEl) artistEl.value = artist;
+
   const spotifyUrl = makeSpotifySearchUrl(title, artist);
   const youtubeMusicUrl = makeYouTubeMusicSearchUrl(title, artist);
   qs("#spotifyUrl").value = spotifyUrl;
