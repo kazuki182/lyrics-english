@@ -19,11 +19,13 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v70-youtube-title-manual-priority";
+const APP_PATCH_VERSION = "v72-word-meaning-required";
 let noteFilter = { type: "all", query: "" };
 let artistLibraryFilter = { letter: "all", query: "" };
 
 const FEATURE_UPDATES = [
+  { version: "v72", title: "意味なし単語の保存防止", detail: "単語帳登録時に意味が空のまま保存されないようにし、ChatGPT結果の貼り付けで意味・品詞を自動反映しやすくしました。" },
+  { version: "v71", title: "単語帳登録を一語優先に修正", detail: "未登録単語の登録時に歌詞行ではなく選択した一語を保存し、意味・品詞・使い方・例文を表示しやすくしました。" },
   { version: "v70", title: "手入力タイトル優先・曲名推定改善", detail: "YouTube推定が不完全でも手入力を上書きせず、曲名・アーティスト候補を探しやすくしました。" },
   { version: "v69", title: "HOMEにジャケット横スクロール", detail: "追加済み曲のアルバムジャケットを横スワイプで見られるようにしました。" },
   { version: "v65", title: "スマホ版アーティスト別ライブラリを調整", detail: "iPhoneで横に見切れないように、検索・A-Z・アーティストカードを1列表示に整えました。" },
@@ -260,6 +262,10 @@ function bindStaticEvents() {
   qs("#modalAddBtn").addEventListener("click", addSelectedWordToVocab);
   const modalPromptBtn = qs("#modalPromptBtn");
   if (modalPromptBtn) modalPromptBtn.addEventListener("click", generateWordRegistrationPrompt);
+  const modalMemo = qs("#modalMemo");
+  if (modalMemo) modalMemo.addEventListener("input", syncWordRegistrationFieldsFromMemo);
+  const modalMeaning = qs("#modalMeaning");
+  if (modalMeaning) modalMeaning.addEventListener("input", updateWordMeaningRequirementState);
   qs("#wordModal").addEventListener("click", e => { if (e.target.id === "wordModal") closeWordModal(); });
   document.addEventListener("click", handleDelegatedClick);
   window.addEventListener("scroll", updateBackToTopButton, { passive: true });
@@ -1126,8 +1132,8 @@ function lineHtml(line, songId, songTitle, artistName) {
       <button class="btn red" data-action="speech-stop" type="button">停止</button>
       <button class="btn secondary" data-action="speech-rate" data-rate="0.5" data-text="${escAttr(lyric)}" type="button">0.5倍</button>
       <button class="btn secondary" data-action="speech-rate" data-rate="0.35" data-text="${escAttr(lyric)}" type="button">0.35倍</button>
-      <button class="btn green" type="button">単語をクリックして単語帳へ</button>
-      <button class="btn secondary" type="button" data-action="save-lyric-line" data-song-id="${escAttr(songId)}" data-song-title="${escAttr(songTitle || "")}" data-artist-name="${escAttr(artistName || "")}" data-line-no="${Number(line.line_no) || 0}" data-lyric="${escAttr(lyric)}" data-translation="${escAttr(translation)}">この歌詞を保存</button>
+      <button class="btn green" type="button">単語は上の英単語を直接タップ</button>
+      <button class="btn secondary" type="button" data-action="save-lyric-line" data-song-id="${escAttr(songId)}" data-song-title="${escAttr(songTitle || "")}" data-artist-name="${escAttr(artistName || "")}" data-line-no="${Number(line.line_no) || 0}" data-lyric="${escAttr(lyric)}" data-translation="${escAttr(translation)}">この歌詞行を保存（フレーズ）</button>
     </div>
   </div>`;
 }
@@ -3318,8 +3324,10 @@ function openWordModal(word, songId, lineNo, songTitle, artistName, detail = {})
   const isUnregistered = detail?.unregistered === "1" && !manualMeaning;
   qs("#modalWord").textContent = clean;
   qs("#modalInfo").textContent = `${songTitle} / ${artistName}${isUnregistered ? " / 未登録単語" : ""}`;
-  qs("#modalMeaning").value = manualMeaning || (isUnregistered ? "" : info.meaning);
+  const initialMeaning = manualMeaning || (isUnregistered ? "" : info.meaning);
+  qs("#modalMeaning").value = isValidVocabularyMeaning(initialMeaning) ? initialMeaning : "";
   qs("#modalPos").value = isUnregistered ? "" : info.pos;
+  updateWordMeaningRequirementState();
   const usage = getWordUsage(clean);
   const usageText = detail?.usage || (isUnregistered ? "" : usage.usage || info.memo || "");
   const exampleText = detail?.example || (isUnregistered ? line?.lyric || "" : usage.example || "");
@@ -3391,33 +3399,131 @@ function parseVocabMemoDetails(memo = "") {
   const text = String(memo || "");
   const get = labels => {
     for (const label of labels) {
-      const re = new RegExp(`(?:^|\n)${escapeRegExp(label)}\s*[：:]\s*([^\n]+)`, "i");
+      const re = new RegExp(`(?:^|\n)${escapeRegExp(label)}\\s*[：:]\\s*([^\n]+)`, "i");
       const m = re.exec(text);
       if (m) return m[1].trim();
     }
     return "";
   };
   return {
+    word: get(["word", "単語", "熟語", "表現"]),
+    meaning: get(["meaning", "意味", "日本語"]),
+    partOfSpeech: get(["part_of_speech", "pos", "品詞"]),
     level: get(["level", "レベル", "難易度"]),
     usage: get(["usage", "使い方", "用法"]),
     example: get(["example", "例文"]),
     exampleJa: get(["example_ja", "例文訳", "訳", "日本語訳"]),
-    context: get(["曲中の文脈", "歌詞", "context"])
+    context: get(["source_context", "曲中の文脈", "歌詞", "context"]),
+    memo: get(["memo", "メモ", "補足"])
   };
+}
+
+function isValidVocabularyMeaning(value) {
+  const text = String(value || "").trim();
+  if (!text) return false;
+  const lowered = text.toLowerCase();
+  const invalids = [
+    "意味を確認してください",
+    "文脈の中で意味を確認します",
+    "未登録",
+    "登録されていません",
+    "クリックすると単語帳に追加",
+    "meaning",
+    "日本語の意味"
+  ];
+  return !invalids.some(x => lowered.includes(String(x).toLowerCase()));
+}
+
+function updateWordMeaningRequirementState() {
+  const input = qs("#modalMeaning");
+  const help = qs("#modalMeaningHelp");
+  if (!input || !help) return;
+  const ok = isValidVocabularyMeaning(input.value);
+  input.classList.toggle("field-error", !ok);
+  help.textContent = ok
+    ? "意味が入力されています。このまま単語帳に保存できます。"
+    : "意味は必須です。ChatGPT結果を貼り付けるか、手入力してください。";
+  help.classList.toggle("warning", !ok);
+}
+
+function syncWordRegistrationFieldsFromMemo() {
+  const memoEl = qs("#modalMemo");
+  if (!memoEl) return;
+  const details = parseVocabMemoDetails(memoEl.value || "");
+  const meaningEl = qs("#modalMeaning");
+  const posEl = qs("#modalPos");
+  if (meaningEl && !isValidVocabularyMeaning(meaningEl.value) && isValidVocabularyMeaning(details.meaning)) {
+    meaningEl.value = details.meaning;
+  }
+  if (posEl && !String(posEl.value || "").trim() && details.partOfSpeech) {
+    posEl.value = details.partOfSpeech;
+  }
+  updateWordMeaningRequirementState();
+}
+
+function normalizeVocabularyTerm(term, fallback = "") {
+  const raw = String(term || "").trim() || String(fallback || "").trim();
+  if (!raw) return "";
+  const cleaned = raw
+    .replace(/[“”]/g, '"')
+    .replace(/[’]/g, "'")
+    .replace(/[\[\]{}()]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const parts = cleaned.split(" ").filter(Boolean);
+  // 長すぎる文が word に入ってきた場合は、選択中の一語を優先する。
+  if (parts.length > 4 && fallback) return normalizeVocabularyTerm(fallback);
+  if (parts.length >= 2) {
+    return parts.map(p => normalizeWord(p)).filter(Boolean).join(" ");
+  }
+  return normalizeWord(cleaned);
+}
+
+function buildVocabMemo({ rawMemo = "", details = {}, context = "", translation = "" }) {
+  const lines = [];
+  if (details.level) lines.push(`level: ${details.level}`);
+  if (details.usage) lines.push(`usage: ${details.usage}`);
+  if (details.example) lines.push(`example: ${details.example}`);
+  if (details.exampleJa) lines.push(`example_ja: ${details.exampleJa}`);
+  if (context) lines.push(`曲中の文脈: ${context}`);
+  if (translation) lines.push(`和訳: ${translation}`);
+  if (details.memo) lines.push(`memo: ${details.memo}`);
+  const extra = String(rawMemo || "").trim();
+  if (extra && !lines.join("\n").includes(extra)) {
+    lines.push("--- 貼り付け内容 ---");
+    lines.push(extra);
+  }
+  return lines.join("\n").trim();
 }
 
 async function addSelectedWordToVocab() {
   if (!selectedWordContext) return;
-  const { word, songId, songTitle, artistName, example } = selectedWordContext;
+  const { word, songId, songTitle, artistName, example, translation } = selectedWordContext;
+  const rawMemo = qs("#modalMemo").value || "";
+  const details = parseVocabMemoDetails(rawMemo);
+  const term = normalizeVocabularyTerm(details.word, word);
+  if (!term || term.length < 2 || STOP_WORDS.has(term)) {
+    toast("登録する単語を確認してください");
+    return;
+  }
+  const meaning = (qs("#modalMeaning").value || details.meaning || "").trim();
+  if (!isValidVocabularyMeaning(meaning)) {
+    updateWordMeaningRequirementState();
+    toast("意味を入れてから単語帳に追加してください");
+    return;
+  }
+  const pos = (qs("#modalPos").value || details.partOfSpeech || "").trim();
+  const exampleForCard = (details.example || "").trim();
+  const memo = buildVocabMemo({ rawMemo, details, context: example, translation });
   const now = new Date().toISOString();
   const { error } = await supabaseClient.from("vocabulary").insert({
     user_id: currentUser,
     song_id: songId,
-    word,
-    meaning: qs("#modalMeaning").value,
-    part_of_speech: qs("#modalPos").value,
-    example,
-    memo: qs("#modalMemo").value,
+    word: term,
+    meaning,
+    part_of_speech: pos,
+    example: exampleForCard,
+    memo,
     song_title: songTitle,
     artist_name: artistName,
     status: "復習中",
@@ -3425,11 +3531,11 @@ async function addSelectedWordToVocab() {
     updated_at: now
   });
   if (error) { toast("単語追加失敗: " + error.message); return; }
-  await addLog(`${currentUser} が単語「${word}」を追加しました`);
+  await addLog(`${currentUser} が単語「${term}」を追加しました`);
   await fetchVocab();
   renderVocab();
   closeWordModal();
-  toast("単語帳に追加しました");
+  toast(`単語「${term}」を単語帳に追加しました`);
 }
 
 async function saveLyricLineFromButton(button) {

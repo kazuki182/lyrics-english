@@ -270,7 +270,7 @@
       min-height:42px;
     }
     .note-search{min-width:230px;}
-    .note-card{align-items:flex-start;}.unregistered-word{border-bottom:1px dashed rgba(255,255,255,.45);opacity:.92}.word-detail-grid{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.word-detail-grid span{font-size:12px;background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:999px;padding:4px 8px}.note-meaning{font-weight:800;margin:4px 0 6px}.word-detail-more summary{cursor:pointer;font-weight:800;color:#9dccff;margin-top:8px}.word-prompt-output{min-height:130px;font-size:12px;line-height:1.55}.word-modal-help{background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:14px;padding:10px;margin:10px 0}
+    .note-card{align-items:flex-start;}.unregistered-word{border-bottom:1px dashed rgba(255,255,255,.45);opacity:.92}.word-detail-grid{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.word-detail-grid span{font-size:12px;background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:999px;padding:4px 8px}.note-meaning{font-weight:800;margin:4px 0 6px}.word-detail-more summary{cursor:pointer;font-weight:800;color:#9dccff;margin-top:8px}.word-prompt-output{min-height:130px;font-size:12px;line-height:1.55}.word-modal-help{background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:14px;padding:10px;margin:10px 0}.required-label{font-size:11px;background:#ef4444;color:white;border-radius:999px;padding:2px 7px;margin-left:6px}.word-required-help{margin-top:6px}.word-required-help.warning{color:#fecaca}.field-error{border-color:#ef4444!important;box-shadow:0 0 0 3px rgba(239,68,68,.16)!important}
     .note-main{min-width:0;width:100%;}
     .note-memo-label{display:block;margin-top:10px;margin-bottom:5px;color:var(--muted);}
     .note-memo{
@@ -880,10 +880,10 @@
       <h3 id="modalWord">word</h3>
       <p class="mini" id="modalInfo"></p>
       <a class="dict-link" id="modalDictLink" href="#" target="_blank" rel="noopener">Weblioで確認</a>
-      <div class="field"><label>意味</label><input id="modalMeaning" placeholder="例：圧倒された、いっぱいいっぱいの"></div>
+      <div class="field"><label>意味 <span class="required-label">必須</span></label><input id="modalMeaning" placeholder="例：圧倒された、いっぱいいっぱいの"><p id="modalMeaningHelp" class="mini word-required-help">意味は必須です。ChatGPT結果を貼り付けるか、手入力してください。</p></div>
       <div class="field"><label>品詞</label><input id="modalPos" placeholder="例：形容詞 / 動詞 / 名詞"></div>
-      <div class="field"><label>その歌詞行での使われ方・詳細</label><textarea id="modalMemo" style="min-height:90px" placeholder="level / usage / example / example_ja / memo などを貼り付けできます"></textarea></div>
-      <div class="word-modal-help mini">意味が未登録の単語は、ChatGPT用プロンプトを作って説明を貼り付けてから単語帳に追加できます。</div>
+      <div class="field"><label>単語の詳細・ChatGPT結果貼り付け</label><textarea id="modalMemo" style="min-height:90px" placeholder="【単語登録データ】の結果を貼り付けできます。word / meaning / part_of_speech / level / usage / example / example_ja / memo"></textarea></div>
+      <div class="word-modal-help mini">選んだ一語を単語帳に登録します。熟語・句動詞の場合だけフレーズ登録もできます。歌詞行全体は「保存フレーズ」に入ります。</div>
       <div class="actions"><button class="btn secondary" id="modalPromptBtn" type="button">ChatGPT用プロンプト作成</button></div>
       <div class="field"><label>ChatGPT用プロンプト</label><textarea id="modalPromptOutput" class="word-prompt-output" readonly placeholder="ボタンを押すとここに表示され、コピーされます"></textarea></div>
       <div class="actions"><button class="btn" id="modalAddBtn">単語帳に追加</button><button class="btn secondary" id="modalCloseBtn">閉じる</button></div>
@@ -894,6 +894,6 @@
   <button id="backToTopBtn" class="back-to-top-btn no-print" type="button" data-action="back-to-top" aria-label="ページ上部へ戻る">上へ</button>
   <div id="toast" class="toast"></div>
   <script src="config.js"></script>
-  <script src="app.js?v=70-youtube-title-manual-priority"></script>
+  <script src="app.js?v=72-word-meaning-required"></script>
 </body>
 </html>
