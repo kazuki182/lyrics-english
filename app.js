@@ -19,7 +19,7 @@ let currentSpeechText = "";
 let currentSpeechRate = 1;
 let speechPaused = false;
 let currentDifficultyReason = "";
-const APP_PATCH_VERSION = "v75-music-link-title-lock";
+const APP_PATCH_VERSION = "v76-feat-clean-left-behind-fix";
 let noteFilter = { type: "all", query: "" };
 let artistLibraryFilter = { letter: "all", query: "" };
 
@@ -1316,8 +1316,11 @@ function extractYoutubeId(url) {
 
 
 function stripFeaturingText(value) {
+  // feat/ft は独立した語として出た時だけ除去します。
+  // 以前は Left Behind の「ft Behind」を feat 扱いして Le まで短縮していました。
   return String(value || "")
-    .replace(/\s*[\(\[]?\s*(?:feat\.?|ft\.?|featuring)\s+[^\)\]\-–—|/]+[\)\]]?/ig, " ")
+    .replace(/\s*[\(\[]\s*(?:feat\.?|ft\.?|featuring)\s+[^\)\]]+[\)\]]/ig, " ")
+    .replace(/\s+(?:feat\.?|ft\.?|featuring)\s+.*$/ig, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
