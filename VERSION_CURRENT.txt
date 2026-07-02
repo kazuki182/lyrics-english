@@ -1,0 +1,4 @@
+Ver.118 THINK / KNOW / FEEL 追加版
+Base: Ver.117 WATCH / HEAR / LISTEN
+Target verbs added: THINK / KNOW / FEEL
+Rebuilt verbs in order: GET / TAKE / MAKE / GIVE / HAVE / GO / COME / PUT / KEEP / FIND / SEE / LOOK / WATCH / HEAR / LISTEN / THINK / KNOW / FEEL
